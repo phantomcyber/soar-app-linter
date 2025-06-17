@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soar-app-linter"
+version = "1.0.0-beta.1"
+description = "A command-line tool for running pylint with custom rules"
+readme = "README.md"
+requires-python = ">=3.13.0"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = [
+    "cisco",
+    "splunk",
+    "soar",
+    "phantom",
+    "app",
+    "connector",
+    "sdk",
+]
+authors = [
+    { name = "Chris Geohring", email = "cgeohring@splunk.com" },
+    { name = "Michael Nordby", email = "mnordby@splunk.com" },
+]
+classifiers = [
+    "Development Status :: 1 - Beta",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pylint==3.3.6",
+    "tomli>=2.0.0; python_version < '3.11'",
+
+    # SOAR phantom lib dependencies
+    "beautifulsoup4==4.10.0",
+    "distro==1.8.0",
+    "pydantic<2",
+    "requests<3",
+    "responses==0.22.0",
+    "httpx>=0.28.1",
+    "tqdm>=4.67.1",
+    "humanize>=4.12.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+
+[project.scripts]
+soar-app-linter = "soar_app_linter.cli:main"
