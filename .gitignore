@@ -1,0 +1,7 @@
+# Folders to ignore
+soar_app_linter_venv/
+soar_app_linter.*/
+__pycache__
+
+.DS_STORE
+app_tests/*
