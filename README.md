@@ -8,7 +8,6 @@ A command-line tool for linting Python code with custom pylint rules and automat
 - Automatic creation of missing `__init__.py` files
 - Support for custom pylint rules
 - JSON output option
-- Auto-fix capability (when available)
 - Python 3.13 compatible
 
 ## Installation
@@ -42,11 +41,6 @@ soar-app-linter /path/to/your/code
 With JSON output:
 ```bash
 soar-app-linter soar_app_linter /path/to/your/code --json
-```
-
-Enable auto-fix (when available):
-```bash
-soar-app-linter soar_app_linter /path/to/your/code --fix
 ```
 
 ## Command Line Options
