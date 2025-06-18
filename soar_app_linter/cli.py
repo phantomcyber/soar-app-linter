@@ -10,6 +10,11 @@ import sys
 from enum import Enum
 from pathlib import Path
 import re
+from enum import Enum
+from pathlib import Path
+from typing import Any, Union
+from packaging.version import Version
+import glob
 
 # Set up logging
 logging.basicConfig(
@@ -17,6 +22,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+PYTHON_313_VERSION = Version("3.13")
+
+class NotFoundError(Exception):
+    """App JSON not found"""
 
 class MessageLevel(str, Enum):
     ERROR = "error"
@@ -139,6 +149,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--no-deps",
         action="store_true",
         help="Disable automatic installation of dependencies. This also disables import errors from being reported.",
+    )
+
+    parser.add_argument(
+        "--disable-app-json-validation",
+        action="store_true",
+        help="Disable validation of app.json file",
     )
 
     return parser.parse_args(args)
@@ -383,6 +399,127 @@ def install_dependencies(directory: str) -> bool:
     logger.debug("No supported non-empty dependency files found, skipping dependency installation")
     return True
 
+# TODO is this a list that could be aqcuired via the splunk-soar-sdk?
+REQUIRED_APP_JSON_FIELDS = (
+    "appid",
+    "name",
+    "description",
+    "publisher",
+    "package_name",
+    "type",
+    "main_module",
+    "app_version",
+    "product_vendor",
+    "product_name",
+    "product_version_regex",
+    "min_phantom_version",
+    "logo",
+    "configuration",
+    "actions",
+    "python_version",
+)
+
+def _find_app_json(
+    app_dir: Union[str, os.PathLike]) -> tuple[str, dict[str, Any]]:
+    """
+    Locate and return an app's json file
+    If given an app directory, search for the app's json file and return its path and contents.
+    If given an app tarball, without extracting the entire tarball, find the app's json file and returns its path within the tarball and contents
+    We have to search since there's no set naming convention for the file, and apps can have more than one
+    file with the json extension in their directories
+    """
+    errors = []
+    required_fields = REQUIRED_APP_JSON_FIELDS
+
+    json_filepaths = glob.glob(os.path.join(app_dir, "*.json"))
+    
+    if not json_filepaths:
+        raise NotFoundError(f'No JSON files found in directory "{app_dir}"')
+
+    for json_filepath in json_filepaths:
+        try:
+            with open(json_filepath) as f:
+                json_content = json.load(f)
+            if not isinstance(json_content, dict):
+                errors.append(f"{json_filepath}: Expected a JSON object")
+                continue
+                
+            missing = [field for field in required_fields if field not in json_content]
+            if missing:
+                errors.append(f"{json_filepath}: Missing required fields: {', '.join(missing)}")
+                continue
+                
+            return json_filepath, json_content
+            
+        except (OSError, ValueError, json.JSONDecodeError) as e:
+            errors.append(f"{json_filepath}: {str(e)}")
+            continue
+
+    # If we get here, no valid app.json was found
+    error_msg = (
+        f'No suitable app JSON found in directory "{app_dir}".\n'
+        'Encountered the following errors while searching:\n'
+    )
+    error_msg += '\n'.join(f"  - {error}" for error in errors)
+    raise ValueError(error_msg)
+
+def _app_python_versions(app_json: [dict[str, Any]] = None) -> set[Version]:
+    if app_json is None:
+        raise ValueError(
+            "'app_json' must be defined to determine python versions"
+        )
+
+    assert app_json is not None  # this appeases typecheckers
+
+    python_versions = app_json.get("python_version")
+    if not python_versions:
+        raise ValueError("'python_version' must be defined in app json")
+    elif isinstance(python_versions, (float, int)):
+        python_versions = [python_versions]
+    elif isinstance(python_versions, str):
+        python_versions = python_versions.split(",")
+    elif not isinstance(python_versions, list):
+        raise ValueError("'python_version' must be a list, string, float or int")
+
+    out: set[Version] = set()
+    for python_version in python_versions:
+        if not (python_version := str(python_version).strip()):
+            # skip empty strings
+            continue
+
+        # only take major(.minor)?
+        if match := re.match(r"^\d+(\.\d+)?", python_version):
+            python_version = match[0]
+
+        # replace any instances of "3" with "3.9" for clarity
+        if python_version == Version("3"):
+            python_version = Version("3.9")
+
+        out.add(Version(python_version))
+
+    return out
+
+def find_and_validate_app_json(target_dir: str) -> bool:
+    """Validate that the app_json contains a valid python_version that includes PYTHON_313_VERSION.
+    
+    Args:
+        app_json: The parsed app.json content as a dictionary
+        
+    Returns:
+        bool: True if validation passes, False otherwise
+    """
+    app_json_path, app_json = _find_app_json(target_dir)
+    try:
+        python_versions = _app_python_versions(app_json)
+        if PYTHON_313_VERSION not in python_versions:
+            logger.error(f"App does not list SOAR supported Python {PYTHON_313_VERSION} versions in the `python_version` field of the app json {app_json_path}")
+            return False
+        return True
+    except ValueError as e:
+        logger.error(str(e))
+        breakpoint()
+        raise
+
 def main() -> int:
     """Main entry point for the CLI."""
     args = parse_args()
@@ -390,6 +527,10 @@ def main() -> int:
     if not os.path.exists(args.target):
         logger.error(f"Error: Target '{args.target}' does not exist")
         return 1
+
+    if not args.disable_app_json_validation:
+        if not find_and_validate_app_json(args.target):
+            return 1
 
     if not args.no_init and os.path.isdir(args.target):
         ensure_init_files(args.target)
@@ -400,7 +541,7 @@ def main() -> int:
         output_format=output_format,
         verbose=args.verbose,
         message_level=args.message_level,
-        no_deps=args.no_deps
+        no_deps=args.no_deps,
     )
 
     if output:

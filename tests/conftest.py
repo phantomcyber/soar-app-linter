@@ -54,7 +54,7 @@ def run_linter() -> Callable[..., tuple[int, str]]:
             target=target,
             output_format=output_format,
             message_level=message_level,
-            no_deps=no_deps
+            no_deps=no_deps,
         )
 
     return _run_linter

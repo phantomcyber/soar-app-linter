@@ -53,6 +53,7 @@ soar-app-linter soar_app_linter /path/to/your/code --json
 - `--message-level`: Set minimum message level (info, warning, error)
 - `--version`: Show version and exit
 - `--no-deps`: Disable automatic installation of dependencies specified in app configuration. This also disables import errors from being reported.
+- `--disable-app-json-validation`: Disable validation of app.json file. We check that the python versions specified in the app json file are supported by SOAR. 
 
 
 ## Development
