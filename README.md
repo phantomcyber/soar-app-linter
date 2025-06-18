@@ -4,11 +4,12 @@ A command-line tool for linting Python code with custom pylint rules and automat
 
 ## Features
 
-- Lint Python code using pylint 3.3.6
-- Automatic creation of missing `__init__.py` files
-- Support for custom pylint rules
+- Lint Python code using pylint `3.3.6` (same version as SOAR uses)
+- Automatic creation of missing `__init__.py` files to avoid pylint skipping over files in subdirectories.
+- Emits either 0 or 1 exit code for easy CI integration
 - JSON output option
-- Python 3.13 compatible
+- Currently lints against Python 3.13
+- Checks the supplied app json for python 3.13 listing in `python_version`
 
 ## Installation
 

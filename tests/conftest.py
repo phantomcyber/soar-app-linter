@@ -1,10 +1,10 @@
 """Pytest configuration and fixtures."""
 from pathlib import Path
-from collections.abc import Callable
+from typing import Callable
 
 import pytest
 
-from soar_app_linter.cli import MessageLevel, run_pylint
+from soar_app_linter.pylint_runner import run_pylint, MessageLevel
 
 
 @pytest.fixture(scope="session")

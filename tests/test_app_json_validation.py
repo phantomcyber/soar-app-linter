@@ -1,10 +1,10 @@
 """Tests for app.json validation."""
 import json
-import pytest
 from pathlib import Path
 from typing import Any
 
-from soar_app_linter.cli import find_and_validate_app_json, PYTHON_313_VERSION, NotFoundError
+from soar_app_linter.app_validation import validate_app_json
+
 
 def create_app_json(tmp_path: Path, python_version: Any) -> Path:
     """Create an app.json file with the given python_version."""
@@ -34,20 +34,24 @@ def create_app_json(tmp_path: Path, python_version: Any) -> Path:
     app_json_path.write_text(json.dumps(app_json))
     return app_dir
 
+
 def test_valid_app_json_string(tmp_path):
     """Test app.json with python_version as string "3.13"."""
     app_dir = create_app_json(tmp_path, "3.13")
-    assert find_and_validate_app_json(str(app_dir)) is True
+    assert validate_app_json(app_dir) is True
+
 
 def test_valid_app_json_comma_string(tmp_path):
     """Test app.json with python_version as comma-separated string."""
     app_dir = create_app_json(tmp_path, "3.12, 3.13")
-    assert find_and_validate_app_json(str(app_dir)) is True
+    assert validate_app_json(app_dir) is True
+
 
 def test_valid_app_json_list(tmp_path):
     """Test app.json with python_version as list."""
     app_dir = create_app_json(tmp_path, [3.12, "3.13"])
-    assert find_and_validate_app_json(str(app_dir)) is True
+    assert validate_app_json(app_dir) is True
+
 
 def test_missing_python_version(tmp_path):
     """Test app.json with missing python_version."""
@@ -59,22 +63,19 @@ def test_missing_python_version(tmp_path):
         "appid": "test-app",
         "name": "Test App",
         "description": "Test app for validation",
-        # ... other required fields ...
     }
     
-    app_json_path = app_dir / "app.json"
-    app_json_path.write_text(json.dumps(app_json))
+    (app_dir / "app.json").write_text(json.dumps(app_json))
     
-    # This should raise a ValueError because python_version is missing
-    with pytest.raises(ValueError):
-        _ = find_and_validate_app_json(str(app_dir))
+    # This should return False because python_version is missing
+    assert validate_app_json(app_dir) is False
 
-def test_invalid_python_version(tmp_path):
-    """Test app.json with invalid python_version."""
+
+def test_unsupported_python_version(tmp_path):
+    """Test app.json with unsupported python_version."""
     app_dir = create_app_json(tmp_path, "2.7")  # Unsupported version
-    
-    # This should return False because 2.7 is not in the supported versions
-    assert find_and_validate_app_json(str(app_dir)) is False
+    assert validate_app_json(app_dir) is False
+
 
 def test_app_json_not_found(tmp_path):
     """Test when app.json is not found."""
@@ -82,6 +83,5 @@ def test_app_json_not_found(tmp_path):
     app_dir = tmp_path / "test_app"
     app_dir.mkdir()
     
-    # This should raise NotFoundError
-    with pytest.raises(NotFoundError):
-        find_and_validate_app_json(str(app_dir))
+    # This should return False because no app.json exists
+    assert validate_app_json(app_dir) is False
