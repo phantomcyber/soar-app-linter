@@ -163,7 +163,6 @@ def should_process_app(target_dir: Union[str, os.PathLike]) -> bool:
     try:
         app_json_path, app_json = _find_app_json(target_dir)
         publisher = app_json.get("publisher", "")
-        print(publisher)
         return publisher == "Splunk"
     except (NotFoundError, ValueError):
         return False

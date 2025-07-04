@@ -21,121 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ERROR_FREE_REPOS = [
-    "abnormalsecurity",
-    "abuseipdb",
-    "alienvaultotx",
-    "awsathena",
-    "awscloudtrail",
-    "awsdynamodb",
-    "awsguardduty",
-    "awslambda",
-    "awss3",
-    "awssecurityhub",
-    "awssts",
-    "awswafv2",
-    "azuread",
-    "azuredevops",
-    "bigfix",
-    "bigquery",
-    "bmcremedy",
-    "carbonblackappcontrol",
-    "carbonblackdefense",
-    "carbonblackdefensev2",
-    "censys",
-    "checkpointfirewall",
-    "ciscoesa",
-    "ciscosma",
-    "ciscotalosintelligence",
-    "ciscoumbrella",
-    "ciscoumbrellainvestigate",
-    "ciscowebex",
-    "cloudconvert",
-    "cloudpassagehalo",
-    "cofenseintelligence",
-    "confluence",
-    "connector-template",
-    "crits",
-    "csvimport",
-    "cylance",
-    "dshield",
-    "elasticsearch",
-    "fidelisnetwork",
-    "fortigate",
-    "googleworkspacefordrive",
-    "grrrapidresponse",
-    "haveibeenpwned",
-    "honeydb",
-    "http",
-    "ibmwatsonv3",
-    "imap",
-    "ipinfo",
-    "ipstack",
-    "isitphishing",
-    "ivantiitsm",
-    "junipersrx",
-    "koodous",
-    "malshare",
-    "maxmind",
-    "mcafeeepo",
-    "metadefender",
-    "metasponse",
-    "microsoft365defender",
-    "microsoftadldap",
-    "microsoftazuresql",
-    "microsoftsccm",
-    "microsoftscom",
-    "microsoftsqlserver",
-    "mimecast",
-    "misp",
-    "mongodb",
-    "mxtoolbox",
-    "mysql",
-    "nessus",
-    "netwitnessendpoint",
-    "nginx",
-    "nmap",
-    "paloaltonetworksfirewall",
-    "phantom",
-    "phishinginitiative",
-    "phishlabs",
-    "phishtank",
-    "postgresql",
-    "qradar",
-    "qualys_ssllabs",
-    "remedyforce",
-    "rest_ingest",
-    "ripe",
-    "rsasecureidam",
-    "safebrowsing",
-    "salesforce",
-    "screenshotmachine",
-    "signalfx",
-    "smtp",
-    "splunkattackanalyzer",
-    "splunkitsi",
-    "splunkoncall",
-    "sqlite",
-    "ssh",
-    "statuspage",
-    "symantecdlp",
-    "symantecmessaginggateway",
-    "symantecsa",
-    "taniumrest",
-    "tenableio",
-    "thehive",
-    "threatcrowd",
-    "timer",
-    "tufinsecuretrack",
-    "twilio",
-    "virustotalv3",
-    "vsphere",
-    "whois",
-    "whoisrdap",
-    "wigle",
-    "wildfire",
-    "wmi",
-    "zendesk",
-    "zscaler",
+    # Cleared to regenerate - process all repos for now
 ]
 
 IGNORED_REPOS = [
@@ -214,6 +100,12 @@ def parse_args(args: List[str] = None) -> argparse.Namespace:
         "--disable-app-json-validation",
         action="store_true",
         help="Skip app.json validation"
+    )
+    
+    parser.add_argument(
+        "--single-repo",
+        action="store_true",
+        help="Treat target as a single repository instead of scanning for multiple repositories"
     )
     
     parser.add_argument(
@@ -313,111 +205,25 @@ def main() -> int:
         logger.error(f"Error: Target '{args.target}' does not exist")
         return 1
 
+    # Check if we should treat target as a single repo or scan for multiple repos
+    if args.single_repo or not os.path.isdir(args.target):
+        # Process single repository or file
+        return _process_single_target(args)
+    
     # Check if target is a directory with subdirectories (multiple repos)
     if os.path.isdir(args.target):
         subdirs = [d for d in os.listdir(args.target) 
                   if os.path.isdir(os.path.join(args.target, d)) and not d.startswith('.')]
         
         if subdirs:
-            logger.info(f"Found {len(subdirs)} repositories in {args.target}")
-            overall_exit_code = 0
-            failed_repos = []
-            skipped_repos = []
-            processed_repos = []
-            error_free_repos = []  # Track repos with no errors
-            already_error_free_repos = []  # Track repos skipped due to ERROR_FREE_REPOS
-            ignored_repos = []  # Track repos skipped due to IGNORED_REPOS
-            error_summary: Dict[str, set] = defaultdict(set)
-            repo_error_messages: Dict[str, List[str]] = {}  # Track error messages per repo
-            all_e0401_messages = {}  # Track E0401 messages by repo across all repos
-            
-            for subdir in sorted(subdirs):
-                repo_path = os.path.join(args.target, subdir)
-                
-                # Skip repos that are in the ignored list
-                if subdir in IGNORED_REPOS:
-                    ignored_repos.append(subdir)
-                    continue
-                
-                # Skip repos that are already known to be error-free
-                if subdir in ERROR_FREE_REPOS:
-                    already_error_free_repos.append(subdir)
-                    continue
-                
-                # Check if we should process this repo based on publisher
-                if not should_process_app(repo_path):
-                    logger.info(f"Skipping {subdir} - not a Splunk app")
-                    skipped_repos.append(subdir)
-                    continue
-                
-                processed_repos.append(subdir)
-                exit_code, error_codes, error_messages = process_single_repo(repo_path, args)
-                
-                # Store error messages for this repo
-                repo_error_messages[subdir] = error_messages
-                
-                # Collect E0401 messages if filtering is enabled
-                if args.filter_e0401:
-                    e0401_messages_by_repo = extract_e0401_messages_by_repo('\n'.join(error_messages), subdir)
-                    all_e0401_messages.update(e0401_messages_by_repo)
-                
-                # Collect error codes for this repo
-                for error_code in error_codes:
-                    error_summary[error_code].add(subdir)
-                
-                # Track repos with no errors
-                if not error_codes:
-                    error_free_repos.append(subdir)
-                
-                if exit_code != 0:
-                    overall_exit_code = exit_code
-                    failed_repos.append(subdir)
-            
-            # Report results
-            logger.info(f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps, skipped {len(already_error_free_repos)} known error-free apps, ignored {len(ignored_repos)} repos")
-            
-            if failed_repos:
-                logger.error(f"Linting failed for {len(failed_repos)} repositories: {', '.join(failed_repos)}")
-            elif processed_repos:
-                logger.info("All processed repositories passed linting")
-            
-            # Print E0401 summary if filtering is enabled
-            if args.filter_e0401 and all_e0401_messages:
-                print(f"\n=== E0401 Import Errors by Repository ({len(all_e0401_messages)} repositories) ===")
-                print(json.dumps(all_e0401_messages, indent=2, sort_keys=True))
-                
-                # Count how many repos have each import failure
-                import_failure_counts = defaultdict(int)
-                for repo, errors in all_e0401_messages.items():
-                    for error in errors:
-                        import_failure_counts[error] += 1
-                
-                print("\n=== Import Failure Counts ===")
-                for error_msg in sorted(import_failure_counts.keys()):
-                    count = import_failure_counts[error_msg]
-                    print(f"{count} repos: {error_msg}")
-            
-            # Print error summary (unless filtering for E0401 only)
-            if error_summary and not args.filter_e0401:
-                print("\n=== Error Summary ===")
-                for error_code in sorted(error_summary.keys()):
-                    repos_with_error = error_summary[error_code]
-                    print(f"{error_code}: {len(repos_with_error)} repositories")
-                    if args.verbose:
-                        print(f"  Repositories: {', '.join(sorted(repos_with_error))}")
-            
-            # Print error-free repositories for future skipping
-            if error_free_repos and not args.filter_e0401:
-                print(f"\n=== Error-Free Repositories ({len(error_free_repos)}) ===")
-                print("# Add these to your skip list for future runs:")
-                print("ERROR_FREE_REPOS = [")
-                for repo in sorted(error_free_repos):
-                    print(f'    "{repo}",')
-                print("]")
-            
-            return overall_exit_code
-    
-    # Process single target (file or directory)
+            return _process_multiple_repos(args, subdirs)
+        else:
+            # No subdirectories found, treat as single target
+            return _process_single_target(args)
+
+
+def _process_single_target(args) -> int:
+    """Process a single target (file or directory)."""
     exit_code, error_codes, error_messages = process_single_repo(args.target, args)
     
     # For single repo, show error summary if there are errors
@@ -446,6 +252,107 @@ def main() -> int:
         print("\n=== No errors found in this repository ===")
     
     return exit_code
+
+
+def _process_multiple_repos(args, subdirs) -> int:
+    """Process multiple repositories in a directory."""
+    logger.info(f"Found {len(subdirs)} repositories in {args.target}")
+    overall_exit_code = 0
+    failed_repos = []
+    skipped_repos = []
+    processed_repos = []
+    error_free_repos = []  # Track repos with no errors
+    already_error_free_repos = []  # Track repos skipped due to ERROR_FREE_REPOS
+    ignored_repos = []  # Track repos skipped due to IGNORED_REPOS
+    error_summary: Dict[str, set] = defaultdict(set)
+    repo_error_messages: Dict[str, List[str]] = {}  # Track error messages per repo
+    all_e0401_messages = {}  # Track E0401 messages by repo across all repos
+    
+    for subdir in sorted(subdirs):
+        repo_path = os.path.join(args.target, subdir)
+        
+        # Skip repos that are in the ignored list
+        if subdir in IGNORED_REPOS:
+            ignored_repos.append(subdir)
+            continue
+        
+        # Skip repos that are already known to be error-free
+        if subdir in ERROR_FREE_REPOS:
+            already_error_free_repos.append(subdir)
+            continue
+        
+        # Check if we should process this repo based on publisher
+        if not should_process_app(repo_path):
+            logger.info(f"Skipping {subdir} - not a Splunk app")
+            skipped_repos.append(subdir)
+            continue
+        
+        processed_repos.append(subdir)
+        exit_code, error_codes, error_messages = process_single_repo(repo_path, args)
+        
+        # Store error messages for this repo
+        repo_error_messages[subdir] = error_messages
+        
+        # Collect E0401 messages if filtering is enabled
+        if args.filter_e0401:
+            e0401_messages_by_repo = extract_e0401_messages_by_repo('\n'.join(error_messages), subdir)
+            all_e0401_messages.update(e0401_messages_by_repo)
+        
+        # Collect error codes for this repo
+        for error_code in error_codes:
+            error_summary[error_code].add(subdir)
+        
+        # Track repos with no errors
+        if not error_codes:
+            error_free_repos.append(subdir)
+        
+        if exit_code != 0:
+            overall_exit_code = exit_code
+            failed_repos.append(subdir)
+    
+    # Report results
+    logger.info(f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps, skipped {len(already_error_free_repos)} known error-free apps, ignored {len(ignored_repos)} repos")
+    
+    if failed_repos:
+        logger.error(f"Linting failed for {len(failed_repos)} repositories: {', '.join(failed_repos)}")
+    elif processed_repos:
+        logger.info("All processed repositories passed linting")
+    
+    # Print E0401 summary if filtering is enabled
+    if args.filter_e0401 and all_e0401_messages:
+        print(f"\n=== E0401 Import Errors by Repository ({len(all_e0401_messages)} repositories) ===")
+        print(json.dumps(all_e0401_messages, indent=2, sort_keys=True))
+        
+        # Count how many repos have each import failure
+        import_failure_counts = defaultdict(int)
+        for repo, errors in all_e0401_messages.items():
+            for error in errors:
+                import_failure_counts[error] += 1
+        
+        print("\n=== Import Failure Counts ===")
+        for error_msg in sorted(import_failure_counts.keys()):
+            count = import_failure_counts[error_msg]
+            print(f"{count} repos: {error_msg}")
+    
+    # Print error summary (unless filtering for E0401 only)
+    if error_summary and not args.filter_e0401:
+        print("\n=== Error Summary ===")
+        for error_code in sorted(error_summary.keys()):
+            repos_with_error = error_summary[error_code]
+            print(f"{error_code}: {len(repos_with_error)} repositories")
+            if args.verbose:
+                print(f"  Repositories: {', '.join(sorted(repos_with_error))}")
+    
+    # Print error-free repositories for future skipping
+    if error_free_repos and not args.filter_e0401:
+        print(f"\n=== Error-Free Repositories ({len(error_free_repos)}) ===")
+        print("# Add these to your skip list for future runs:")
+        print("ERROR_FREE_REPOS = [")
+        for repo in sorted(error_free_repos):
+            print(f'    "{repo}",')
+        print("]")
+    
+    return overall_exit_code
 
 
 if __name__ == "__main__":

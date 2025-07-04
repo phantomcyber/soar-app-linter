@@ -24,7 +24,7 @@ class MessageLevel(str, Enum):
             return ["--disable=all", "--enable=F,E"]
         return []  # info or no option provided will show everything
 
-def _find_python_files(directory: Union[str, Path]) -> List[str]:
+def _find_python_files(directory: Union[str, Path], use_relative_paths: bool = False) -> List[str]:
     """Find all Python files in the given directory."""
     logger.debug(f"Searching for Python files in: {directory}")
     
@@ -46,7 +46,12 @@ def _find_python_files(directory: Union[str, Path]) -> List[str]:
             continue
         if path.is_file() and not path.name.startswith('.'):
             logger.debug(f"Found Python file: {path}")
-            files.append(str(path.absolute()))
+            if use_relative_paths:
+                # Use path relative to the directory for local imports to work correctly
+                relative_path = path.relative_to(directory)
+                files.append(str(relative_path))
+            else:
+                files.append(str(path.absolute()))
 
     logger.debug(f"Found {len(files)} Python files in {directory} (excluding .venv)")
     return files
@@ -169,6 +174,7 @@ def run_pylint(
         "pylint",
         f"--rcfile={os.path.join(os.path.dirname(__file__), 'pylintrc.app')}",
         "--load-plugins=soar_app_linter.plugins",
+        "--init-hook=import sys; sys.path.insert(0, '.')",
     ]
     
     # Add message level filtering first
@@ -183,20 +189,25 @@ def run_pylint(
     # Add additional ignore patterns for known-good modules that have import issues due to namespace conflicts
     # This must come AFTER message level filtering to override --disable=all --enable=F,E
     target_basename = os.path.basename(target)
-    if target_basename in ["databricks", "splunk", "aws", "azure", "google"]:
+    if target_basename in ["databricks", "splunk", "aws", "azure", "google", "git", "dns"]:
         # These are common namespace conflicts - disable specific import errors
         cmd.extend([
             "--disable=import-error",
-            "--disable=no-name-in-module"
+            "--disable=no-name-in-module",
+            "--disable=no-member"
         ])
-        logger.debug(f"Disabling import-error and no-name-in-module for namespace conflict repo: {target_basename}")
+        logger.debug(f"Disabling import-error, no-name-in-module, and no-member for namespace conflict repo: {target_basename}")
 
     if output_format == "json":
         cmd.append("--output-format=json")
 
     if os.path.isdir(target):
         _ensure_init_files(target)
-        files = _find_python_files(target)
+        # Set the working directory to the target directory for relative imports
+        working_dir = target
+        logger.debug(f"Setting working directory to: {working_dir}")
+        # Use relative paths when we set the working directory
+        files = _find_python_files(target, use_relative_paths=True)
         if not files:
             logger.warning(f"No Python files found in {target}")
             return 0, ""
@@ -205,6 +216,8 @@ def run_pylint(
         if not os.path.exists(target):
             logger.error(f"Target file does not exist: {target}")
             return 1, f"Error: Target file does not exist: {target}"
+        # For single files, don't set working directory and use absolute path
+        working_dir = None
         cmd.append(target)
 
     logger.debug(f"Running command: {' '.join(cmd)}")
@@ -215,6 +228,7 @@ def run_pylint(
             capture_output=True,
             text=True,
             check=False,
+            cwd=working_dir,
         )
 
         # Log stderr if present
