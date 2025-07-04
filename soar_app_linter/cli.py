@@ -21,7 +21,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ERROR_FREE_REPOS = [
-    # Cleared to regenerate - process all repos for now
+        "abnormalsecurity",
+    "archer",
+    "awsathena",
+    "awssystemsmanager",
+    "checkpointfirewall",
+    "confluence",
+    "dns",
+    "git",
+    "ibmwatsonv3",
+    "insightvm",
+    "ivantiitsm",
+    "junipersrx",
+    "kafka",
+    "office365",
+    "rsasecureidam",
+    "snowflake",
+    "splunkattackanalyzer",
+    "symantecdlp",
+    "symantecmessaginggateway",
+    "tenableio",
 ]
 
 IGNORED_REPOS = [
@@ -29,6 +48,84 @@ IGNORED_REPOS = [
     "virustotal",
     "wwt_cisco_firepower",
     "frictionless_connector_repo",
+]
+
+# Repos that only have pudb import errors (E0401: Unable to import 'pudb')
+PUDB_ONLY_ERROR_REPOS = [
+    "abuseipdb",
+    "alienvaultotx",
+    "awscloudtrail",
+    "awsdynamodb",
+    "awsguardduty",
+    "awslambda",
+    "awss3",
+    "awssecurityhub",
+    "awssts",
+    "awswafv2",
+    "carbonblackdefense",
+    "carbonblackdefensev2",
+    "censys",
+    "ciscoumbrella",
+    "ciscoumbrellainvestigate",
+    "cloudpassagehalo",
+    "cofenseintelligence",
+    "connector-template",
+    "crits",
+    "cylance",
+    "dshield",
+    "fortigate",
+    "grrrapidresponse",
+    "haveibeenpwned",
+    "honeydb",
+    "ipinfo",
+    "ipstack",
+    "isitphishing",
+    "koodous",
+    "malshare",
+    "mcafeeepo",
+    "metadefender",
+    "microsoftsccm",
+    "microsoftscom",
+    "misp",
+    "mongodb",
+    "mxtoolbox",
+    "mysql",
+    "nessus",
+    "netwitnessendpoint",
+    "nginx",
+    "paloaltonetworksfirewall",
+    "phantom",
+    "phishinginitiative",
+    "phishlabs",
+    "phishtank",
+    "qradar",
+    "qualys_ssllabs",
+    "remedyforce",
+    "ripe",
+    "safebrowsing",
+    "signalfx",
+    "splunkitsi",
+    "splunkoncall",
+    "sqlite",
+    "ssh",
+    "statuspage",
+    "symantecsa",
+    "thehive",
+    "threatcrowd",
+    "timer",
+    "tufinsecuretrack",
+    "twilio",
+    "virustotalv3",
+    "vsphere",
+    "whoisrdap",
+    "wigle",
+    "zendesk",
+    "zscaler",
+]
+
+# Repos with suspected namespace conflicts (repo name conflicts with module name)
+NAMESPACE_CONFLICT_REPOS = [
+    # Will be populated after running linter
 ]
 
 # Packages already included in the platform - exclude from E0401 filtering
@@ -56,7 +153,12 @@ PLATFORM_PACKAGES = {
     "PyYAML", "yaml",  # PyYAML imports as yaml
     "hvac",
     "pylint",
-    "pudb"
+    "pudb",
+    # Add alternative names and common variations
+    "lxml",
+    "defusedxml",
+    "html5lib",
+    "webencodings"
 }
 
 
@@ -87,7 +189,7 @@ def parse_args(args: List[str] = None) -> argparse.Namespace:
         type=MessageLevel,
         choices=list(MessageLevel),
         default=MessageLevel.INFO,
-        help="Minimum message level to show (default: info)"
+        help="Minimum message level to show: 'info' or 'error' (default: info)"
     )
     
     parser.add_argument(
@@ -112,6 +214,12 @@ def parse_args(args: List[str] = None) -> argparse.Namespace:
         "--filter-e0401",
         action="store_true",
         help="Show only E0401 (import errors) and their unique messages"
+    )
+    
+    parser.add_argument(
+        "--json-failures",
+        action="store_true",
+        help="Output JSON with repositories as keys and their error messages as values (excludes error-free, pudb-only, and ignored repos)"
     )
     
     return parser.parse_args(args)
@@ -149,7 +257,30 @@ def extract_e0401_messages_by_repo(output: str, repo_name: str) -> Dict[str, Lis
                 # Check if this error is about a platform package
                 is_platform_package = False
                 for package in PLATFORM_PACKAGES:
-                    if f"'{package}'" in error_message or f'"{package}"' in error_message:
+                    # Check for various patterns:
+                    # - "Unable to import 'package'"
+                    # - "Unable to import \"package\""
+                    # - "No module named 'package'"
+                    # - "No module named \"package\""
+                    # - Submodule imports like 'package.submodule'
+                    # - Just the package name in the message
+                    if (f"'{package}'" in error_message or 
+                        f'"{package}"' in error_message or
+                        f"'{package}." in error_message or  # submodule imports
+                        f'"{package}.' in error_message or  # submodule imports
+                        f"import '{package}'" in error_message or
+                        f'import "{package}"' in error_message or
+                        f"import '{package}." in error_message or  # submodule imports
+                        f'import "{package}.' in error_message or  # submodule imports
+                        f"named '{package}'" in error_message or
+                        f'named "{package}"' in error_message or
+                        f"named '{package}." in error_message or  # submodule imports
+                        f'named "{package}.' in error_message or  # submodule imports
+                        f" {package} " in error_message or
+                        f" {package}." in error_message or  # submodule imports
+                        error_message.endswith(f" {package}") or
+                        error_message.startswith(f"{package} ") or
+                        error_message.startswith(f"{package}.")):  # submodule imports
                         is_platform_package = True
                         break
                 
@@ -195,6 +326,42 @@ def process_single_repo(repo_path: str, args: argparse.Namespace) -> tuple[int, 
         print(output, end="")
 
     return exit_code, error_codes, error_messages
+
+
+def has_only_pudb_import_errors(error_messages: List[str]) -> bool:
+    """Check if the only errors in the list are pudb import errors."""
+    if not error_messages:
+        return False
+    
+    for error_msg in error_messages:
+        # Check if this is an E0401 error about pudb
+        if 'E0401:' in error_msg and 'pudb' in error_msg.lower():
+            continue
+        else:
+            # Found a non-pudb error
+            return False
+    
+    # All errors are pudb-related
+    return True
+
+
+def has_namespace_conflict(repo_name: str, error_messages: List[str]) -> bool:
+    """Check if the repo has import errors that match the repository name, indicating a namespace conflict."""
+    if not error_messages:
+        return False
+    
+    # Look for E0401 import errors that mention the repo name
+    for error_msg in error_messages:
+        if 'E0401:' in error_msg:
+            # Check if the error message contains the repo name as an import
+            # Common patterns: "Unable to import 'reponame'" or 'Unable to import "reponame"'
+            if (f"'{repo_name}'" in error_msg or 
+                f'"{repo_name}"' in error_msg or
+                f"import '{repo_name}'" in error_msg or
+                f'import "{repo_name}"' in error_msg):
+                return True
+    
+    return False
 
 
 def main() -> int:
@@ -262,7 +429,10 @@ def _process_multiple_repos(args, subdirs) -> int:
     skipped_repos = []
     processed_repos = []
     error_free_repos = []  # Track repos with no errors
+    pudb_only_repos = []  # Track repos with only pudb import errors
+    namespace_conflict_repos = []  # Track repos with suspected namespace conflicts
     already_error_free_repos = []  # Track repos skipped due to ERROR_FREE_REPOS
+    already_pudb_only_repos = []  # Track repos skipped due to PUDB_ONLY_ERROR_REPOS
     ignored_repos = []  # Track repos skipped due to IGNORED_REPOS
     error_summary: Dict[str, set] = defaultdict(set)
     repo_error_messages: Dict[str, List[str]] = {}  # Track error messages per repo
@@ -279,6 +449,11 @@ def _process_multiple_repos(args, subdirs) -> int:
         # Skip repos that are already known to be error-free
         if subdir in ERROR_FREE_REPOS:
             already_error_free_repos.append(subdir)
+            continue
+        
+        # Skip repos that only have pudb import errors (essentially clean)
+        if subdir in PUDB_ONLY_ERROR_REPOS:
+            already_pudb_only_repos.append(subdir)
             continue
         
         # Check if we should process this repo based on publisher
@@ -302,16 +477,20 @@ def _process_multiple_repos(args, subdirs) -> int:
         for error_code in error_codes:
             error_summary[error_code].add(subdir)
         
-        # Track repos with no errors
+        # Track repos with no errors or only pudb errors
         if not error_codes:
             error_free_repos.append(subdir)
+        elif has_only_pudb_import_errors(error_messages):
+            pudb_only_repos.append(subdir)
+        elif has_namespace_conflict(subdir, error_messages):
+            namespace_conflict_repos.append(subdir)
         
         if exit_code != 0:
             overall_exit_code = exit_code
             failed_repos.append(subdir)
     
     # Report results
-    logger.info(f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps, skipped {len(already_error_free_repos)} known error-free apps, ignored {len(ignored_repos)} repos")
+    logger.info(f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps, skipped {len(already_error_free_repos)} known error-free apps, skipped {len(already_pudb_only_repos)} known pudb-only apps, ignored {len(ignored_repos)} repos")
     
     if failed_repos:
         logger.error(f"Linting failed for {len(failed_repos)} repositories: {', '.join(failed_repos)}")
@@ -351,6 +530,39 @@ def _process_multiple_repos(args, subdirs) -> int:
         for repo in sorted(error_free_repos):
             print(f'    "{repo}",')
         print("]")
+    
+    # Print pudb-only repositories for future reference
+    if pudb_only_repos and not args.filter_e0401:
+        print(f"\n=== Repositories with Only PUDB Import Errors ({len(pudb_only_repos)}) ===")
+        print("# These repos only have 'Unable to import pudb' errors:")
+        print("PUDB_ONLY_ERROR_REPOS = [")
+        for repo in sorted(pudb_only_repos):
+            print(f'    "{repo}",')
+        print("]")
+    
+    # Print namespace conflict repositories for future reference
+    if namespace_conflict_repos and not args.filter_e0401:
+        print(f"\n=== Repositories with Suspected Namespace Conflicts ({len(namespace_conflict_repos)}) ===")
+        print("# These repos have import errors that match their repository name:")
+        print("NAMESPACE_CONFLICT_REPOS = [")
+        for repo in sorted(namespace_conflict_repos):
+            print(f'    "{repo}",')
+        print("]")
+    
+    # Output JSON failures if requested
+    if args.json_failures:
+        failures_json = {}
+        for repo, messages in repo_error_messages.items():
+            # Only include repos that have errors and are not in our skip lists
+            if (messages and 
+                repo not in ERROR_FREE_REPOS and 
+                repo not in PUDB_ONLY_ERROR_REPOS and 
+                repo not in IGNORED_REPOS and
+                repo not in error_free_repos and
+                repo not in pudb_only_repos):
+                failures_json[repo] = messages
+        
+        print(json.dumps(failures_json, indent=2, sort_keys=True))
     
     return overall_exit_code
 
