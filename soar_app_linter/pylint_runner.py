@@ -189,7 +189,7 @@ def run_pylint(
     # Add additional ignore patterns for known-good modules that have import issues due to namespace conflicts
     # This must come AFTER message level filtering to override --disable=all --enable=F,E
     target_basename = os.path.basename(target)
-    if target_basename in ["databricks", "splunk", "aws", "azure", "google", "git", "dns"]:
+    if target_basename in ["databricks", "splunk", "aws", "azure", "google", "git", "dns", "jira"]:
         # These are common namespace conflicts - disable specific import errors
         cmd.extend([
             "--disable=import-error",

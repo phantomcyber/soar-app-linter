@@ -158,7 +158,9 @@ PLATFORM_PACKAGES = {
     "lxml",
     "defusedxml",
     "html5lib",
-    "webencodings"
+    "webencodings",
+    "phantom_common",
+    "encryption_helper"
 }
 
 
@@ -243,6 +245,37 @@ def extract_error_messages(output: str) -> List[str]:
     return error_lines
 
 
+def is_platform_package_error(error_message: str) -> bool:
+    """Check if an error message is about a platform package."""
+    for package in PLATFORM_PACKAGES:
+        # Check for various patterns:
+        # - "Unable to import 'package'"
+        # - "Unable to import \"package\""
+        # - "No module named 'package'"
+        # - "No module named \"package\""
+        # - Submodule imports like 'package.submodule'
+        # - Just the package name in the message
+        if (f"'{package}'" in error_message or 
+            f'"{package}"' in error_message or
+            f"'{package}." in error_message or  # submodule imports
+            f'"{package}.' in error_message or  # submodule imports
+            f"import '{package}'" in error_message or
+            f'import "{package}"' in error_message or
+            f"import '{package}." in error_message or  # submodule imports
+            f'import "{package}.' in error_message or  # submodule imports
+            f"named '{package}'" in error_message or
+            f'named "{package}"' in error_message or
+            f"named '{package}." in error_message or  # submodule imports
+            f'named "{package}.' in error_message or  # submodule imports
+            f" {package} " in error_message or
+            f" {package}." in error_message or  # submodule imports
+            error_message.endswith(f" {package}") or
+            error_message.startswith(f"{package} ") or
+            error_message.startswith(f"{package}.")):  # submodule imports
+            return True
+    return False
+
+
 def extract_e0401_messages_by_repo(output: str, repo_name: str) -> Dict[str, List[str]]:
     """Extract E0401 error messages for a specific repository, excluding platform packages."""
     repo_errors = []
@@ -254,38 +287,8 @@ def extract_e0401_messages_by_repo(output: str, repo_name: str) -> Dict[str, Lis
             if match:
                 error_message = match.group(1).strip()
                 
-                # Check if this error is about a platform package
-                is_platform_package = False
-                for package in PLATFORM_PACKAGES:
-                    # Check for various patterns:
-                    # - "Unable to import 'package'"
-                    # - "Unable to import \"package\""
-                    # - "No module named 'package'"
-                    # - "No module named \"package\""
-                    # - Submodule imports like 'package.submodule'
-                    # - Just the package name in the message
-                    if (f"'{package}'" in error_message or 
-                        f'"{package}"' in error_message or
-                        f"'{package}." in error_message or  # submodule imports
-                        f'"{package}.' in error_message or  # submodule imports
-                        f"import '{package}'" in error_message or
-                        f'import "{package}"' in error_message or
-                        f"import '{package}." in error_message or  # submodule imports
-                        f'import "{package}.' in error_message or  # submodule imports
-                        f"named '{package}'" in error_message or
-                        f'named "{package}"' in error_message or
-                        f"named '{package}." in error_message or  # submodule imports
-                        f'named "{package}.' in error_message or  # submodule imports
-                        f" {package} " in error_message or
-                        f" {package}." in error_message or  # submodule imports
-                        error_message.endswith(f" {package}") or
-                        error_message.startswith(f"{package} ") or
-                        error_message.startswith(f"{package}.")):  # submodule imports
-                        is_platform_package = True
-                        break
-                
                 # Only add non-platform package errors
-                if not is_platform_package:
+                if not is_platform_package_error(error_message):
                     repo_errors.append(error_message)
     
     # Return repo name as key with unique error messages as value
@@ -560,7 +563,17 @@ def _process_multiple_repos(args, subdirs) -> int:
                 repo not in IGNORED_REPOS and
                 repo not in error_free_repos and
                 repo not in pudb_only_repos):
-                failures_json[repo] = messages
+                
+                # Filter out platform package errors from the messages
+                filtered_messages = []
+                for message in messages:
+                    if 'E0401:' in message and is_platform_package_error(message):
+                        continue  # Skip platform package errors
+                    filtered_messages.append(message)
+                
+                # Only include repos that still have errors after filtering
+                if filtered_messages:
+                    failures_json[repo] = filtered_messages
         
         print(json.dumps(failures_json, indent=2, sort_keys=True))
     
