@@ -1,11 +1,14 @@
 """App validation module for SOAR apps."""
 import json
+import logging
 import os
 import re
 import glob
 from typing import Any, Tuple, Union
 from packaging.version import Version
 import re
+
+logger = logging.getLogger(__name__)
 
 class NotFoundError(Exception):
     """Raised when app.json is not found or invalid."""
@@ -129,7 +132,7 @@ def validate_app_json(target_dir: Union[str, os.PathLike]) -> bool:
         
         # Skip non-Splunk apps
         if publisher != "Splunk":
-            print(f"Skipping app with publisher '{publisher}' - only processing Splunk apps")
+            logger.debug(f"Skipping app with publisher '{publisher}' - only processing Splunk apps")
             return False
             
         app_versions = _app_python_versions(app_json)
