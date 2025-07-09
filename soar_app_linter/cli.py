@@ -160,7 +160,7 @@ PLATFORM_PACKAGES = {
     "html5lib",
     "webencodings",
     "phantom_common",
-    "encryption_helper"
+    "encryption_helper",
 }
 
 
@@ -396,6 +396,26 @@ def _process_single_target(args) -> int:
     """Process a single target (file or directory)."""
     exit_code, error_codes, error_messages = process_single_repo(args.target, args)
     
+    # Handle --json-failures for single repo
+    if args.json_failures:
+        repo_name = os.path.basename(args.target)
+        failures_json = {}
+        
+        if error_messages:
+            # Filter out platform package errors from the messages
+            filtered_messages = []
+            for message in error_messages:
+                if 'E0401:' in message and is_platform_package_error(message):
+                    continue  # Skip platform package errors
+                filtered_messages.append(message)
+            
+            # Only include repo if it still has errors after filtering
+            if filtered_messages:
+                failures_json[repo_name] = filtered_messages
+        
+        print(json.dumps(failures_json, indent=2, sort_keys=True))
+        return exit_code
+    
     # For single repo, show error summary if there are errors
     if error_codes:
         if args.filter_e0401:
@@ -404,6 +424,17 @@ def _process_single_target(args) -> int:
             if e0401_messages_by_repo:
                 print(f"\n=== E0401 Import Errors by Repository ({len(e0401_messages_by_repo)} repositories) ===")
                 print(json.dumps(e0401_messages_by_repo, indent=2, sort_keys=True))
+                
+                # Count how many times each import failure occurs (same as multi-repo)
+                import_failure_counts = defaultdict(int)
+                for repo, errors in e0401_messages_by_repo.items():
+                    for error in errors:
+                        import_failure_counts[error] += 1
+                
+                print("\n=== Import Failure Counts ===")
+                for error_msg in sorted(import_failure_counts.keys()):
+                    count = import_failure_counts[error_msg]
+                    print(f"{count} occurrences: {error_msg}")
             else:
                 print("\n=== No E0401 errors found ===")
         else:
@@ -414,6 +445,19 @@ def _process_single_target(args) -> int:
             
             for error_code in sorted(error_counts.keys()):
                 print(f"{error_code}: {error_counts[error_code]} occurrences")
+            
+            # Add comprehensive error summary by error code (same as multi-repo)
+            error_summary: Dict[str, set] = defaultdict(set)
+            repo_name = os.path.basename(args.target)
+            for error_code in error_codes:
+                error_summary[error_code].add(repo_name)
+            
+            if args.verbose:
+                print("\n=== Comprehensive Error Summary ===")
+                for error_code in sorted(error_summary.keys()):
+                    repos_with_error = error_summary[error_code]
+                    print(f"{error_code}: {len(repos_with_error)} repositories")
+                    print(f"  Repositories: {', '.join(sorted(repos_with_error))}")
                 
             print("\n=== Detailed Error Messages ===")
             for error_msg in error_messages:
