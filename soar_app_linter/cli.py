@@ -276,6 +276,25 @@ def is_platform_package_error(error_message: str) -> bool:
     return False
 
 
+def filter_platform_package_errors(error_codes: List[str], error_messages: List[str]) -> tuple[List[str], List[str]]:
+    """Filter out platform package errors from both error codes and messages lists."""
+    filtered_codes = []
+    filtered_messages = []
+    
+    for error_msg in error_messages:
+        # Skip platform package E0401 errors
+        if 'E0401:' in error_msg and is_platform_package_error(error_msg):
+            continue
+        filtered_messages.append(error_msg)
+        
+        # Extract error code from the message
+        match = re.search(r'([EWCRFIS]\d{4}):', error_msg)
+        if match:
+            filtered_codes.append(match.group(1))
+    
+    return filtered_codes, filtered_messages
+
+
 def extract_e0401_messages_by_repo(output: str, repo_name: str) -> Dict[str, List[str]]:
     """Extract E0401 error messages for a specific repository, excluding platform packages."""
     repo_errors = []
@@ -438,9 +457,12 @@ def _process_single_target(args) -> int:
             else:
                 print("\n=== No E0401 errors found ===")
         else:
+            # Filter out platform package errors from all summary outputs
+            filtered_error_codes, filtered_error_messages = filter_platform_package_errors(error_codes, error_messages)
+            
             print("\n=== Error Summary ===")
             error_counts = defaultdict(int)
-            for error_code in error_codes:
+            for error_code in filtered_error_codes:
                 error_counts[error_code] += 1
             
             for error_code in sorted(error_counts.keys()):
@@ -449,7 +471,7 @@ def _process_single_target(args) -> int:
             # Add comprehensive error summary by error code (same as multi-repo)
             error_summary: Dict[str, set] = defaultdict(set)
             repo_name = os.path.basename(args.target)
-            for error_code in error_codes:
+            for error_code in filtered_error_codes:
                 error_summary[error_code].add(repo_name)
             
             if args.verbose:
@@ -460,7 +482,7 @@ def _process_single_target(args) -> int:
                     print(f"  Repositories: {', '.join(sorted(repos_with_error))}")
                 
             print("\n=== Detailed Error Messages ===")
-            for error_msg in error_messages:
+            for error_msg in filtered_error_messages:
                 print(error_msg)
     else:
         print("\n=== No errors found in this repository ===")
