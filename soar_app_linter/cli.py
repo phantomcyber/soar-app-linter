@@ -154,6 +154,9 @@ PLATFORM_PACKAGES = {
     "hvac",
     "pylint",
     "pudb",
+    "tabulate",
+    "markdown2",
+    "pytz",
     # Add alternative names and common variations
     "lxml",
     "defusedxml",
