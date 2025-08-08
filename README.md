@@ -1,65 +1,66 @@
-# Python Linter with Custom Rules
+# SOAR App Linter
 
-A command-line tool for linting Python code with custom pylint rules and automatic `__init__.py` management.
+Lint Splunk SOAR apps with pylint and SOAR-specific rules. Simple CLI, CI-friendly output.
 
 ## Features
 
-- Lint Python code using pylint `3.3.6` (same version as SOAR uses)
-- Automatic creation of missing `__init__.py` files to avoid pylint skipping over files in subdirectories.
-- Emits either 0 or 1 exit code for easy CI integration
-- JSON output option
-- Currently lints against Python 3.13
-- Checks the supplied app json for python 3.13 listing in `python_version`
+- Pylint 3.3.6 (matches SOAR platform)
+- SOAR-specific pylint plugins
+- Auto-create missing `__init__.py` files
+- Text or JSON output; exit code 0/1 for CI
+- Python 3.13 compatible and app.json validation
 
 ## Installation
 
-1. Install pyenv (recommended) or your preferred Python version manager
-2. Install Python 3.13:
+1. Use Python 3.13
+1. Create a venv and install:
    ```bash
-   pyenv install 3.13.0
-   ```
-3. Create and activate a virtual environment:
-   ```bash
-   python3.13 -m venv soar_app_linter_venv
-   source soar_app_linter_venv/bin/activate
-   ```
-4. Install the package in development mode:
-   ```bash
-   # Install uv if not already installed
-   pip install uv
-
-   # Install the package in development mode with uv
+   python3.13 -m venv .venv && source .venv/bin/activate
+   pip install uv  # if not already installed
    uv pip install -e ".[dev]"
    ```
 
-## Usage
+## Quick start
 
-Basic usage:
+### Single repository (common)
+
+- Errors only (CI-friendly):
+
 ```bash
-soar-app-linter /path/to/your/code
+soar-app-linter --single-repo ./googlepeople --message-level error
 ```
 
-With JSON output:
+- JSON output:
+
 ```bash
-soar-app-linter soar_app_linter /path/to/your/code --json
+soar-app-linter --single-repo /path/to/app --output-format json
 ```
 
-## Command Line Options
+### Multiple repositories (optional)
 
-- `TARGET_DIR`: Directory containing Python files to lint (required)
-- `--json`: Output results in JSON format
-- `--no-init`: Disable automatic creation of `__init__.py` files
-- `-h, --help`: Show help message and exit
-- `--verbose`: Show verbose output
-- `--message-level`: Set minimum message level (info, warning, error)
-- `--version`: Show version and exit
-- `--no-deps`: Disable automatic installation of dependencies specified in app configuration. This also disables import errors from being reported.
-- `--disable-app-json-validation`: Disable validation of app.json file. We check that the python versions specified in the app json file are supported by SOAR. 
+```bash
+soar-app-linter /path/to/apps
+```
 
+## CLI options (most used)
+
+- `target` (positional): file or directory to lint
+- `--single-repo`: treat target as one app repo
+- `--message-level {info,error}`: minimum messages to show (default: info)
+- `--output-format {text,json}`: output format (default: text)
+- `--no-deps`: skip dependency install and ignore import errors
+- `-v, --verbose`: verbose logs
+
+Advanced:
+
+- `--filter-e0401`: show only import errors (E0401)
+- `--json-failures`: JSON with repos and their error messages
+- `--disable-app-json-validation`: skip app.json validation
 
 ## Development
 
-To run tests:
+Run tests:
+
 ```bash
 pytest -v
 ```

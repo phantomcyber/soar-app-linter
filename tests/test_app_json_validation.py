@@ -1,4 +1,5 @@
 """Tests for app.json validation."""
+
 import json
 from pathlib import Path
 from typing import Any
@@ -6,16 +7,21 @@ from typing import Any
 from soar_app_linter.app_validation import validate_app_json
 
 
-def create_app_json(tmp_path: Path, python_version: Any) -> Path:
-    """Create an app.json file with the given python_version."""
+def create_app_json(
+    tmp_path: Path, python_version: Any, publisher: str = "Splunk"
+) -> Path:
+    """Create an app.json file with the given python_version.
+
+    Default publisher is set to "Splunk" to align with validation behavior.
+    """
     app_dir = tmp_path / "test_app"
     app_dir.mkdir()
-    
+
     app_json = {
         "appid": "test-app",
         "name": "Test App",
         "description": "Test app for validation",
-        "publisher": "Test",
+        "publisher": publisher,
         "package_name": "test_app",
         "type": "python3",
         "main_module": "test_app.py",
@@ -27,9 +33,9 @@ def create_app_json(tmp_path: Path, python_version: Any) -> Path:
         "logo": "test.png",
         "configuration": {},
         "actions": [],
-        "python_version": python_version
+        "python_version": python_version,
     }
-    
+
     app_json_path = app_dir / "app.json"
     app_json_path.write_text(json.dumps(app_json))
     return app_dir
@@ -57,16 +63,16 @@ def test_missing_python_version(tmp_path):
     """Test app.json with missing python_version."""
     app_dir = tmp_path / "test_app"
     app_dir.mkdir()
-    
+
     # Create app.json without python_version
     app_json = {
         "appid": "test-app",
         "name": "Test App",
         "description": "Test app for validation",
     }
-    
+
     (app_dir / "app.json").write_text(json.dumps(app_json))
-    
+
     # This should return False because python_version is missing
     assert validate_app_json(app_dir) is False
 
@@ -82,6 +88,6 @@ def test_app_json_not_found(tmp_path):
     # Create a directory without app.json
     app_dir = tmp_path / "test_app"
     app_dir.mkdir()
-    
+
     # This should return False because no app.json exists
     assert validate_app_json(app_dir) is False
