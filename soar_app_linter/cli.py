@@ -226,9 +226,9 @@ def parse_args(args: List[str] = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--filter-e0401",
+        "--only-import-errors",
         action="store_true",
-        help="Show only E0401 (import errors) and their unique messages",
+        help="Show only import errors (E0401) and their unique messages",
     )
 
     parser.add_argument(
@@ -461,7 +461,7 @@ def _process_single_target(args) -> int:
 
     # For single repo, show error summary if there are errors
     if error_codes:
-        if args.filter_e0401:
+        if args.only_import_errors:
             repo_name = os.path.basename(args.target)
             e0401_messages_by_repo = extract_e0401_messages_by_repo(
                 "\n".join(error_messages), repo_name
@@ -603,7 +603,7 @@ def _process_multiple_repos(args, subdirs) -> int:
         logger.info("All processed repositories passed linting")
 
     # Print E0401 summary if filtering is enabled
-    if args.filter_e0401 and all_e0401_messages:
+    if args.only_import_errors and all_e0401_messages:
         print(
             f"\n=== E0401 Import Errors by Repository ({len(all_e0401_messages)} repositories) ==="
         )
@@ -621,7 +621,7 @@ def _process_multiple_repos(args, subdirs) -> int:
             print(f"{count} repos: {error_msg}")
 
     # Print error summary (unless filtering for E0401 only)
-    if error_summary and not args.filter_e0401:
+    if error_summary and not args.only_import_errors:
         print("\n=== Error Summary ===")
         for error_code in sorted(error_summary.keys()):
             repos_with_error = error_summary[error_code]
@@ -630,7 +630,7 @@ def _process_multiple_repos(args, subdirs) -> int:
                 print(f"  Repositories: {', '.join(sorted(repos_with_error))}")
 
     # Print error-free repositories for future skipping
-    if error_free_repos and not args.filter_e0401:
+    if error_free_repos and not args.only_import_errors:
         print(f"\n=== Error-Free Repositories ({len(error_free_repos)}) ===")
         print("# Add these to your skip list for future runs:")
         print("ERROR_FREE_REPOS = [")
@@ -639,7 +639,7 @@ def _process_multiple_repos(args, subdirs) -> int:
         print("]")
 
     # Print pudb-only repositories for future reference
-    if pudb_only_repos and not args.filter_e0401:
+    if pudb_only_repos and not args.only_import_errors:
         print(
             f"\n=== Repositories with Only PUDB Import Errors ({len(pudb_only_repos)}) ==="
         )
@@ -650,7 +650,7 @@ def _process_multiple_repos(args, subdirs) -> int:
         print("]")
 
     # Print namespace conflict repositories for future reference
-    if namespace_conflict_repos and not args.filter_e0401:
+    if namespace_conflict_repos and not args.only_import_errors:
         print(
             f"\n=== Repositories with Suspected Namespace Conflicts ({len(namespace_conflict_repos)}) ==="
         )

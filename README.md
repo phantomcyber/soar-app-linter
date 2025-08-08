@@ -44,7 +44,7 @@ soar-app-linter /path/to/apps
 
 ## CLI options (most used)
 
-- `target` (positional): file or directory to lint (default: `.`)
+- `target` (positional): directory to app or apps to lint (default: `.`)
 - `--single-repo`: treat target as one app repo
 - `--message-level {info,error}`: minimum messages to show (default: info)
 - `--output-format {text,json}`: output format (default: text)
@@ -53,7 +53,7 @@ soar-app-linter /path/to/apps
 
 Advanced:
 
-- `--filter-e0401`: show only import errors (E0401)
+- `--only-import-errors`: show only import errors (E0401)
 - `--json-failures`: JSON with repos and their error messages
 - `--disable-app-json-validation`: skip app.json validation
 
