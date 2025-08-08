@@ -21,6 +21,7 @@ setup(
         "pylint==3.3.6",
         "astroid>=2.15.0,<3.0.0",
         "tomli>=2.0.0; python_version < '3.11'",
+        "packaging>=23.2",
     ],
     extras_require={
         "dev": [

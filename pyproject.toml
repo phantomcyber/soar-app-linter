@@ -34,6 +34,7 @@ classifiers = [
 dependencies = [
     "pylint==3.3.6",
     "tomli>=2.0.0; python_version < '3.11'",
+    "packaging>=23.2",
 
     # SOAR phantom lib dependencies
     "beautifulsoup4==4.10.0",

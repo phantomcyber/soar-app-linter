@@ -214,17 +214,14 @@ def run_pylint(
         cmd.extend(
             [
                 "--disable=import-error",
-                "--disable=no-name-in-module",
-                "--disable=no-member",
             ]
         )
         logger.debug(
-            f"Disabling import-error, no-name-in-module, and no-member for namespace conflict repo: {target_basename}"
+            f"Disabling import-error for namespace conflict repo: {target_basename}"
         )
 
     # Disable error codes that are inconsistent between tool and platform behavior
     # These errors are often false positives in SOAR app environments due to dynamic nature
-    # of the platform APIs and runtime behavior differences
     cmd.extend(
         [
             "--disable=no-member",  # E1101
