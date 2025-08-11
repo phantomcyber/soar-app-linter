@@ -58,5 +58,6 @@ such as html5lib or html.parser instead.",
         if node.modname in self.libraries_to_avoid:
             self.add_message(AvoidLibraries.get_message_id(node.modname), node=node)
 
+
 def register(linter):
     linter.register_checker(AvoidLibraries(linter))

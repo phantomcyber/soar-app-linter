@@ -1,5 +1,6 @@
 """A simple module that should pass all linting checks."""
 
+
 def add(a: int, b: int) -> int:
     """Add two numbers together.
 

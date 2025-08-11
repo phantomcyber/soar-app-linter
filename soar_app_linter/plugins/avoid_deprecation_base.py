@@ -35,7 +35,9 @@ class AvoidDeprecationBase(BaseChecker):
             node_value = self._resolve_full_name(node.value)
 
             if isinstance(target_node, nodes.AssignName):
-                self.alias_map[target_node.name] = node_value if node_value else target_node.name
+                self.alias_map[target_node.name] = (
+                    node_value if node_value else target_node.name
+                )
             elif isinstance(target_node, nodes.AssignAttr):
                 self.alias_map[target_node.as_string()] = node_value
 
@@ -52,6 +54,7 @@ class AvoidDeprecationBase(BaseChecker):
             # Handle the case where the node is a call to a class to create an instance
             return self._resolve_full_name(node.func)
         return ""
+
 
 def register(linter):
     linter.register_checker(AvoidDeprecationBase(linter))

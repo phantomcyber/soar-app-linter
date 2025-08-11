@@ -74,5 +74,6 @@ Please check the loop for a valid break or return to avoid an infinite loop.",
         except StopIteration:
             pass
 
+
 def register(linter):
     linter.register_checker(AvoidInfiniteLoops(linter))

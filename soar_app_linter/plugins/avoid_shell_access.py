@@ -49,5 +49,6 @@ class AvoidShellAccess(BannedFunctions):
 
     MESSAGE = "no-shell-access"
 
+
 def register(linter):
     linter.register_checker(AvoidShellAccess(linter))

@@ -45,5 +45,6 @@ class AvoidChainedClassmethodOn313(AvoidDeprecationBase):
             for attribute in node.body:
                 self._check_decorator(attribute)
 
+
 def register(linter):
     linter.register_checker(AvoidChainedClassmethodOn313(linter))
