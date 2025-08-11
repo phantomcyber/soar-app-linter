@@ -1,5 +1,6 @@
 """Pylint custom rules plugin package."""
 
+
 def register(linter):
     """Register all checkers with the linter.
 
@@ -34,6 +35,7 @@ def register(linter):
     lxml_library.register(linter)
     shell_access.register(linter)
     sleeping.register(linter)
+
 
 # This makes the package a valid PyLint plugin
 __all__ = ["register"]

@@ -68,7 +68,9 @@ class AvoidGlobalPlaybookAPIs(BaseChecker):
         parent = node.parent
         if isinstance(parent, astroid.scoped_nodes.Module):
             return True
-        elif isinstance(parent, (astroid.scoped_nodes.ClassDef, astroid.scoped_nodes.FunctionDef)):
+        elif isinstance(
+            parent, (astroid.scoped_nodes.ClassDef, astroid.scoped_nodes.FunctionDef)
+        ):
             return False
         # Otherwise, follow parent(parent could be an if condition, for loop,..etc)
         return self._is_module_level(parent)
@@ -78,8 +80,12 @@ class AvoidGlobalPlaybookAPIs(BaseChecker):
         for module_name, alias in node.names:
             # e.g import phantom as alias_phantom
             if module_name == self.PHANTOM_MODULE and alias:
-                self.ph_engine_forbidden_modules.add(f"{alias}.{self.PH_ENGINE_API_SUBMODULE}")
-                self.playbook_apis_forbidden_modules.add(f"{alias}.{self.PLAYBOOK_API_SUBMODULE}")
+                self.ph_engine_forbidden_modules.add(
+                    f"{alias}.{self.PH_ENGINE_API_SUBMODULE}"
+                )
+                self.playbook_apis_forbidden_modules.add(
+                    f"{alias}.{self.PLAYBOOK_API_SUBMODULE}"
+                )
 
             # e.g import phantom.rules as phantom
             if module_name == self.playbook_api_module_full_path:
@@ -138,6 +144,7 @@ class AvoidGlobalPlaybookAPIs(BaseChecker):
         except AttributeError:
             # Skip the nodes that do not have expected attributes
             pass
+
 
 def register(linter):
     linter.register_checker(AvoidGlobalPlaybookAPIs(linter))

@@ -102,14 +102,23 @@ class Avoid313RemovalsOn39(AvoidDeprecationBase):
             if full_name in REMOVED_MODULES:
                 self.add_message("no-313-removed-module", node=node, args=(full_name,))
 
-            if module_name in REMOVED_ATTRIBUTES and name in REMOVED_ATTRIBUTES[module_name]:
-                self.add_message("no-313-removed-attribute", node=node, args=(name, module_name))
+            if (
+                module_name in REMOVED_ATTRIBUTES
+                and name in REMOVED_ATTRIBUTES[module_name]
+            ):
+                self.add_message(
+                    "no-313-removed-attribute", node=node, args=(name, module_name)
+                )
 
             if module_name in REMOVED_METHODS and name in REMOVED_METHODS[module_name]:
-                self.add_message("no-313-removed-method", node=node, args=(name, module_name))
+                self.add_message(
+                    "no-313-removed-method", node=node, args=(name, module_name)
+                )
 
             if module_name in REMOVED_CLASSES and name in REMOVED_CLASSES[module_name]:
-                self.add_message("no-313-removed-class", node=node, args=(name, module_name))
+                self.add_message(
+                    "no-313-removed-class", node=node, args=(name, module_name)
+                )
 
     def visit_call(self, node: nodes.Call) -> None:
         if not self.enabled:
@@ -145,21 +154,27 @@ class Avoid313RemovalsOn39(AvoidDeprecationBase):
         method_name = module_name.split(".")[-1]
         for library, methods in REMOVED_METHODS.items():
             if module_name.startswith(library) and method_name in methods:
-                self.add_message("no-313-removed-method", node=node, args=(method_name, library))
+                self.add_message(
+                    "no-313-removed-method", node=node, args=(method_name, library)
+                )
 
     def _check_attribute(self, node) -> None:
         module_name = self._resolve_full_name(node)
         attr_name = module_name.split(".")[-1]
         for module, attributes in REMOVED_ATTRIBUTES.items():
             if module_name.startswith(module) and attr_name in attributes:
-                self.add_message("no-313-removed-attribute", node=node, args=(attr_name, module))
+                self.add_message(
+                    "no-313-removed-attribute", node=node, args=(attr_name, module)
+                )
 
     def _check_class(self, node) -> None:
         module_name = self._resolve_full_name(node)
         class_name = module_name.split(".")[-1]
         for module, classes in REMOVED_CLASSES.items():
             if module_name.startswith(module) and class_name in classes:
-                self.add_message("no-313-removed-class", node=node, args=(class_name, module))
+                self.add_message(
+                    "no-313-removed-class", node=node, args=(class_name, module)
+                )
 
     def _check_decorator(self, node) -> None:
         module_name = self._resolve_full_name(node)
@@ -169,6 +184,7 @@ class Avoid313RemovalsOn39(AvoidDeprecationBase):
                 self.add_message(
                     "no-313-removed-decorator", node=node, args=(decorator_name, module)
                 )
+
 
 def register(linter):
     linter.register_checker(Avoid313RemovalsOn39(linter))

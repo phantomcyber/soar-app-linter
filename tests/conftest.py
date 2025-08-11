@@ -1,4 +1,5 @@
 """Pytest configuration and fixtures."""
+
 from pathlib import Path
 from typing import Callable
 
@@ -40,6 +41,7 @@ def import_test_dir(test_data_dir: Path) -> Path:
 @pytest.fixture()
 def run_linter() -> Callable[..., tuple[int, str]]:
     """Fixture to run the linter with the given arguments."""
+
     def _run_linter(
         target: str,
         output_format: str = "text",

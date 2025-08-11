@@ -1,5 +1,7 @@
 """A module that uses random.sample() to trigger our custom plugin."""
+
 import random
+
 
 def trigger_random_sample() -> list[int]:
     """Use random.sample() which should trigger our custom plugin.

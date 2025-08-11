@@ -51,13 +51,17 @@ class AvoidSleeping(BaseChecker):
             node.func.expr, astroid.node_classes.Name
         ):
             # check if the function call is time.sleep()
-            if node.func.attrname == self.SLEEP and node.func.expr.name in self.time_aliases:
+            if (
+                node.func.attrname == self.SLEEP
+                and node.func.expr.name in self.time_aliases
+            ):
                 self.add_message("no-sleeps", node=node)
 
         elif isinstance(node.func, astroid.node_classes.Name):
             # check if the function call is sleep()
             if node.func.name in self.sleep_aliases:
                 self.add_message("no-sleeps", node=node)
+
 
 def register(linter):
     linter.register_checker(AvoidSleeping(linter))

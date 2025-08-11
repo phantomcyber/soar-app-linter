@@ -50,7 +50,9 @@ class AvoidGlobalVars(BaseChecker):
         parent = node.parent
         if isinstance(parent, astroid.scoped_nodes.Module):
             return True
-        elif isinstance(parent, (astroid.scoped_nodes.ClassDef, astroid.scoped_nodes.FunctionDef)):
+        elif isinstance(
+            parent, (astroid.scoped_nodes.ClassDef, astroid.scoped_nodes.FunctionDef)
+        ):
             return False
         # Otherwise, follow parent(parent could be an if condition, for loop,..etc)
         return self._is_module_level(parent)
@@ -94,14 +96,17 @@ class AvoidGlobalVars(BaseChecker):
                 if isinstance(target, astroid.AssignName):
                     if self._is_within_non_static_condition_if_while(target):
                         # To prevent unpredictable update at module level
-                        self.add_message("no-global-updates", node=node, args=target.name)
+                        self.add_message(
+                            "no-global-updates", node=node, args=target.name
+                        )
                     else:
                         if isinstance(node.value, self.MUTABLE_TYPES):
                             self.mutable_globals.add(target.name)
         else:
             for target in node.targets:
                 if isinstance(target, astroid.AssignName) and (
-                    target.name in self.mutable_globals or target.name in self.current_globals
+                    target.name in self.mutable_globals
+                    or target.name in self.current_globals
                 ):
                     # Update at non-module level is not valid when
                     # 1) The variable is mutable and defined in global scope

@@ -43,5 +43,6 @@ class Avoid313RandomDeprecationsOnAll(AvoidDeprecationBase):
         if any(kw.arg == "random" for kw in node.keywords):
             self.add_message("no-random-shuffle-random-param", node=node)
 
+
 def register(linter):
     linter.register_checker(Avoid313RandomDeprecationsOnAll(linter))

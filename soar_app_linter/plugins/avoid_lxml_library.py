@@ -75,7 +75,10 @@ Where possible, use another library, such as html5lib or html.parser instead.",
             # the node isn't a literal, try to infer its value
             try:
                 inferred = next(node.infer())
-                if isinstance(inferred, astroid.node_classes.Const) and inferred.value is not None:
+                if (
+                    isinstance(inferred, astroid.node_classes.Const)
+                    and inferred.value is not None
+                ):
                     if inferred.value in self.lxml_lib:
                         self.add_message("no-lxml", node=node)
             except astroid.exceptions.InferenceError:
@@ -104,6 +107,7 @@ Where possible, use another library, such as html5lib or html.parser instead.",
             else:
                 # no parser was passed explicitly; default parser(lxml) was used
                 self.add_message("no-lxml", node=node)
+
 
 def register(linter):
     linter.register_checker(AvoidLxml(linter))

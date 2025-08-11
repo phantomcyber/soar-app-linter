@@ -135,5 +135,6 @@ class AvoidFilesystemAccess(BannedFunctions):
 
     MESSAGE = "no-filesystem-access"
 
+
 def register(linter):
     linter.register_checker(AvoidFilesystemAccess(linter))
