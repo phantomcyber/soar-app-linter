@@ -1,0 +1,8 @@
+- id: soar-app-linter
+  name: SOAR App Linter
+  description: Lint Splunk SOAR apps with pylint and SOAR-specific rules
+  entry: soar-app-linter
+  language: python
+  language_version: python3.13
+  pass_filenames: false
+  types: [python]

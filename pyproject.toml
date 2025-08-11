@@ -34,6 +34,7 @@ classifiers = [
 dependencies = [
     "pylint==3.3.6",
     "tomli>=2.0.0; python_version < '3.11'",
+    "packaging>=23.2",
 
     # SOAR phantom lib dependencies
     "beautifulsoup4==4.10.0",
@@ -47,7 +48,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov"]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "pre-commit",
+  "ruff>=0.5",
+  "mdformat>=0.7.17",
+  "mdformat-gfm>=0.3.5",
+]
 
 [project.scripts]
 soar-app-linter = "soar_app_linter.cli:main"
