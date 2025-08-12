@@ -2,6 +2,7 @@
 
 import logging
 import os
+from importlib import resources as importlib_resources
 import subprocess
 import sys
 from enum import Enum
@@ -179,11 +180,24 @@ def run_pylint(
             "This may cause import errors. To avoid this, ensure dependencies are installed in a per-repo .venv."
         )
 
+    # Resolve rcfile path robustly whether running from source or installed package
+    try:
+        rcfile_path = importlib_resources.files(__package__).joinpath("pylintrc.app")
+        rcfile_str = str(rcfile_path)
+    except Exception:
+        rcfile_str = os.path.join(os.path.dirname(__file__), "pylintrc.app")
+
+    if not os.path.exists(rcfile_str):
+        logger.error(
+            f"Missing pylintrc at {rcfile_str}. Ensure 'pylintrc.app' is packaged with soar_app_linter."
+        )
+        return 1, ""
+
     cmd = [
         venv_python,
         "-m",
         "pylint",
-        f"--rcfile={os.path.join(os.path.dirname(__file__), 'pylintrc.app')}",
+        f"--rcfile={rcfile_str}",
         "--load-plugins=soar_app_linter.plugins",
         "--init-hook=import sys; sys.path.insert(0, '.')",
     ]
@@ -273,9 +287,9 @@ def run_pylint(
         # Check if there were any errors in the output
         has_errors = _has_errors_in_output(result.stdout, output_format)
 
-        # Return code is 0 only if there were no errors and pylint succeeded
+        # Any non-zero return code from pylint should fail the run
         # https://pylint.pycqa.org/en/latest/user_guide/usage/run.html#exit-codes
-        exit_code = 1 if (has_errors or result.returncode in (1, 2)) else 0
+        exit_code = 1 if (has_errors or result.returncode != 0) else 0
         return exit_code, result.stdout
 
     except subprocess.CalledProcessError as e:

@@ -47,6 +47,12 @@ dependencies = [
     "humanize>=4.12.2",
 ]
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+soar_app_linter = ["pylintrc.app"]
+
 [project.optional-dependencies]
 dev = [
   "pytest",
