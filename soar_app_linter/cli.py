@@ -10,7 +10,7 @@ from typing import List, Dict
 from collections import defaultdict
 
 from .app_validation import validate_app_json, should_process_app
-from .pylint_runner import MessageLevel, run_pylint
+from .pylint_runner import MessageLevel, run_pylint, ALLOWED_E0401_IMPORT_NAMES
 from .dependency_utils import install_dependencies
 
 # Set up logging
@@ -19,157 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ERROR_FREE_REPOS = [
-    "abnormalsecurity",
-    "archer",
-    "awsathena",
-    "awssystemsmanager",
-    "checkpointfirewall",
-    "confluence",
-    "dns",
-    "git",
-    "ibmwatsonv3",
-    "insightvm",
-    "ivantiitsm",
-    "junipersrx",
-    "kafka",
-    "office365",
-    "rsasecureidam",
-    "snowflake",
-    "splunkattackanalyzer",
-    "symantecdlp",
-    "symantecmessaginggateway",
-    "tenableio",
-]
-
-IGNORED_REPOS = [
-    "alibabaram",
-    "virustotal",
-    "wwt_cisco_firepower",
-    "frictionless_connector_repo",
-]
-
-# Repos that only have pudb import errors (E0401: Unable to import 'pudb')
-PUDB_ONLY_ERROR_REPOS = [
-    "abuseipdb",
-    "alienvaultotx",
-    "awscloudtrail",
-    "awsdynamodb",
-    "awsguardduty",
-    "awslambda",
-    "awss3",
-    "awssecurityhub",
-    "awssts",
-    "awswafv2",
-    "carbonblackdefense",
-    "carbonblackdefensev2",
-    "censys",
-    "ciscoumbrella",
-    "ciscoumbrellainvestigate",
-    "cloudpassagehalo",
-    "cofenseintelligence",
-    "connector-template",
-    "crits",
-    "cylance",
-    "dshield",
-    "fortigate",
-    "grrrapidresponse",
-    "haveibeenpwned",
-    "honeydb",
-    "ipinfo",
-    "ipstack",
-    "isitphishing",
-    "koodous",
-    "malshare",
-    "mcafeeepo",
-    "metadefender",
-    "microsoftsccm",
-    "microsoftscom",
-    "misp",
-    "mongodb",
-    "mxtoolbox",
-    "mysql",
-    "nessus",
-    "netwitnessendpoint",
-    "nginx",
-    "paloaltonetworksfirewall",
-    "phantom",
-    "phishinginitiative",
-    "phishlabs",
-    "phishtank",
-    "qradar",
-    "qualys_ssllabs",
-    "remedyforce",
-    "ripe",
-    "safebrowsing",
-    "signalfx",
-    "splunkitsi",
-    "splunkoncall",
-    "sqlite",
-    "ssh",
-    "statuspage",
-    "symantecsa",
-    "thehive",
-    "threatcrowd",
-    "timer",
-    "tufinsecuretrack",
-    "twilio",
-    "virustotalv3",
-    "vsphere",
-    "whoisrdap",
-    "wigle",
-    "zendesk",
-    "zscaler",
-]
-
-# Repos with suspected namespace conflicts (repo name conflicts with module name)
-NAMESPACE_CONFLICT_REPOS = [
-    # Will be populated after running linter
-]
-
-# Packages already included in the platform - exclude from E0401 filtering
-PLATFORM_PACKAGES = {
-    "beautifulsoup4",
-    "bs4",  # beautifulsoup4 imports as bs4
-    "soupsieve",
-    "parse",
-    "python_dateutil",
-    "dateutil",  # python_dateutil imports as dateutil
-    "six",
-    "requests",
-    "certifi",
-    "charset_normalizer",
-    "idna",
-    "urllib3",
-    "sh",
-    "xmltodict",
-    "simplejson",
-    "python-dateutil",
-    "python-magic",
-    "magic",  # python-magic imports as magic
-    "distro",
-    "django",
-    "requests-pkcs12",
-    "requests_pkcs12",  # requests-pkcs12 can import as requests_pkcs12
-    "pynacl",
-    "nacl",  # pynacl imports as nacl
-    "psycopg2",
-    "PyYAML",
-    "yaml",  # PyYAML imports as yaml
-    "hvac",
-    "pylint",
-    "pudb",
-    "tabulate",
-    "markdown2",
-    "pytz",
-    # Add alternative names and common variations
-    "lxml",
-    "defusedxml",
-    "html5lib",
-    "webencodings",
-    "phantom_common",
-    "encryption_helper",
-}
+## Removed legacy repo lists and platform package list; exit behavior handled in runner.
 
 
 def parse_args(args: List[str] = None) -> argparse.Namespace:
@@ -258,77 +108,40 @@ def extract_error_messages(output: str) -> List[str]:
     return error_lines
 
 
-def is_platform_package_error(error_message: str) -> bool:
-    """Check if an error message is about a platform package."""
-    for package in PLATFORM_PACKAGES:
-        # Check for various patterns:
-        # - "Unable to import 'package'"
-        # - "Unable to import \"package\""
-        # - "No module named 'package'"
-        # - "No module named \"package\""
-        # - Submodule imports like 'package.submodule'
-        # - Just the package name in the message
+def _is_allowed_e0401_message(message: str) -> bool:
+    """Return True if the E0401 message mentions an allowed import name."""
+    lower_msg = message.lower()
+    for pkg in ALLOWED_E0401_IMPORT_NAMES:
+        p = pkg.lower()
         if (
-            f"'{package}'" in error_message
-            or f'"{package}"' in error_message
-            or f"'{package}." in error_message  # submodule imports
-            or f'"{package}.' in error_message  # submodule imports
-            or f"import '{package}'" in error_message
-            or f'import "{package}"' in error_message
-            or f"import '{package}." in error_message  # submodule imports
-            or f'import "{package}.' in error_message  # submodule imports
-            or f"named '{package}'" in error_message
-            or f'named "{package}"' in error_message
-            or f"named '{package}." in error_message  # submodule imports
-            or f'named "{package}.' in error_message  # submodule imports
-            or f" {package} " in error_message
-            or f" {package}." in error_message  # submodule imports
-            or error_message.endswith(f" {package}")
-            or error_message.startswith(f"{package} ")
-            or error_message.startswith(f"{package}.")
-        ):  # submodule imports
+            f"'{p}'" in lower_msg
+            or f'"{p}"' in lower_msg
+            or f" {p} " in lower_msg
+            or f" {p}." in lower_msg
+            or lower_msg.endswith(f" {p}")
+            or lower_msg.startswith(f"{p} ")
+            or lower_msg.startswith(f"{p}.")
+        ):
             return True
     return False
 
 
-def filter_platform_package_errors(
-    error_codes: List[str], error_messages: List[str]
-) -> tuple[List[str], List[str]]:
-    """Filter out platform package errors from both error codes and messages lists."""
-    filtered_codes = []
-    filtered_messages = []
-
-    for error_msg in error_messages:
-        # Skip platform package E0401 errors
-        if "E0401:" in error_msg and is_platform_package_error(error_msg):
-            continue
-        filtered_messages.append(error_msg)
-
-        # Extract error code from the message
-        match = re.search(r"([EWCRFIS]\d{4}):", error_msg)
-        if match:
-            filtered_codes.append(match.group(1))
-
-    return filtered_codes, filtered_messages
-
-
 def extract_e0401_messages_by_repo(output: str, repo_name: str) -> Dict[str, List[str]]:
-    """Extract E0401 error messages for a specific repository, excluding platform packages."""
+    """Extract E0401 error messages for a specific repository (excluding allowed packages)."""
     repo_errors = []
 
     for line in output.split("\n"):
         if "E0401:" in line:
-            # Extract just the error message part after "E0401:"
             match = re.search(r"E0401:\s*(.+)$", line)
             if match:
                 error_message = match.group(1).strip()
-
-                # Only add non-platform package errors
-                if not is_platform_package_error(error_message):
+                if not _is_allowed_e0401_message(error_message):
                     repo_errors.append(error_message)
 
-    # Return repo name as key with unique error messages as value
     return {repo_name: list(set(repo_errors))} if repo_errors else {}
+
+
+## Removed platform package matcher and filter; summaries will reflect raw messages.
 
 
 def process_single_repo(
@@ -364,7 +177,7 @@ def process_single_repo(
 
     if output:
         print(f"\n=== Results for {os.path.basename(repo_path)} ===")
-        print(output, end="")
+        print(_filter_raw_output(output), end="")
 
     return exit_code, error_codes, error_messages
 
@@ -445,14 +258,13 @@ def _process_single_target(args) -> int:
         failures_json = {}
 
         if error_messages:
-            # Filter out platform package errors from the messages
+            # Exclude allowed E0401 messages
             filtered_messages = []
             for message in error_messages:
-                if "E0401:" in message and is_platform_package_error(message):
-                    continue  # Skip platform package errors
+                if "E0401:" in message and _is_allowed_e0401_message(message):
+                    continue
                 filtered_messages.append(message)
 
-            # Only include repo if it still has errors after filtering
             if filtered_messages:
                 failures_json[repo_name] = filtered_messages
 
@@ -471,24 +283,19 @@ def _process_single_target(args) -> int:
                     f"\n=== E0401 Import Errors by Repository ({len(e0401_messages_by_repo)} repositories) ==="
                 )
                 print(json.dumps(e0401_messages_by_repo, indent=2, sort_keys=True))
-
-                # Count how many times each import failure occurs (same as multi-repo)
-                import_failure_counts = defaultdict(int)
-                for repo, errors in e0401_messages_by_repo.items():
-                    for error in errors:
-                        import_failure_counts[error] += 1
-
-                print("\n=== Import Failure Counts ===")
-                for error_msg in sorted(import_failure_counts.keys()):
-                    count = import_failure_counts[error_msg]
-                    print(f"{count} occurrences: {error_msg}")
             else:
                 print("\n=== No E0401 errors found ===")
         else:
-            # Filter out platform package errors from all summary outputs
-            filtered_error_codes, filtered_error_messages = (
-                filter_platform_package_errors(error_codes, error_messages)
-            )
+            # Filter out allowed E0401s from all summary outputs
+            filtered_error_messages = []
+            filtered_error_codes: List[str] = []
+            for msg in error_messages:
+                if "E0401:" in msg and _is_allowed_e0401_message(msg):
+                    continue
+                filtered_error_messages.append(msg)
+                m = re.search(r"([EWCRFIS]\d{4}):", msg)
+                if m:
+                    filtered_error_codes.append(m.group(1))
 
             print("\n=== Error Summary ===")
             error_counts = defaultdict(int)
@@ -498,7 +305,7 @@ def _process_single_target(args) -> int:
             for error_code in sorted(error_counts.keys()):
                 print(f"{error_code}: {error_counts[error_code]} occurrences")
 
-            # Add comprehensive error summary by error code (same as multi-repo)
+            # Add comprehensive error summary by error code
             error_summary: Dict[str, set] = defaultdict(set)
             repo_name = os.path.basename(args.target)
             for error_code in filtered_error_codes:
@@ -530,9 +337,6 @@ def _process_multiple_repos(args, subdirs) -> int:
     error_free_repos = []  # Track repos with no errors
     pudb_only_repos = []  # Track repos with only pudb import errors
     namespace_conflict_repos = []  # Track repos with suspected namespace conflicts
-    already_error_free_repos = []  # Track repos skipped due to ERROR_FREE_REPOS
-    already_pudb_only_repos = []  # Track repos skipped due to PUDB_ONLY_ERROR_REPOS
-    ignored_repos = []  # Track repos skipped due to IGNORED_REPOS
     error_summary: Dict[str, set] = defaultdict(set)
     repo_error_messages: Dict[str, List[str]] = {}  # Track error messages per repo
     all_e0401_messages = {}  # Track E0401 messages by repo across all repos
@@ -540,22 +344,7 @@ def _process_multiple_repos(args, subdirs) -> int:
     for subdir in sorted(subdirs):
         repo_path = os.path.join(args.target, subdir)
 
-        # Skip repos that are in the ignored list
-        if subdir in IGNORED_REPOS:
-            ignored_repos.append(subdir)
-            continue
-
-        # Skip repos that are already known to be error-free
-        if subdir in ERROR_FREE_REPOS:
-            already_error_free_repos.append(subdir)
-            continue
-
-        # Skip repos that only have pudb import errors (essentially clean)
-        if subdir in PUDB_ONLY_ERROR_REPOS:
-            already_pudb_only_repos.append(subdir)
-            continue
-
-        # Check if we should process this repo based on publisher
+        # Skip repos that are not Splunk apps
         if not should_process_app(repo_path):
             logger.info(f"Skipping {subdir} - not a Splunk app")
             skipped_repos.append(subdir)
@@ -567,16 +356,21 @@ def _process_multiple_repos(args, subdirs) -> int:
         # Store error messages for this repo
         repo_error_messages[subdir] = error_messages
 
-        # Collect E0401 messages if filtering is enabled
-        if args.filter_e0401:
-            e0401_messages_by_repo = extract_e0401_messages_by_repo(
-                "\n".join(error_messages), subdir
-            )
+        # Collect E0401 messages
+        e0401_messages_by_repo = extract_e0401_messages_by_repo(
+            "\n".join(error_messages), subdir
+        )
+        # Merge into all_e0401_messages if non-empty
+        if e0401_messages_by_repo:
             all_e0401_messages.update(e0401_messages_by_repo)
 
-        # Collect error codes for this repo
-        for error_code in error_codes:
-            error_summary[error_code].add(subdir)
+        # Collect error codes for this repo, excluding allowed E0401s
+        for msg in error_messages:
+            if "E0401:" in msg and _is_allowed_e0401_message(msg):
+                continue
+            m = re.search(r"([EWCRFIS]\d{4}):", msg)
+            if m:
+                error_summary[m.group(1)].add(subdir)
 
         # Track repos with no errors or only pudb errors
         if not error_codes:
@@ -592,7 +386,7 @@ def _process_multiple_repos(args, subdirs) -> int:
 
     # Report results
     logger.info(
-        f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps, skipped {len(already_error_free_repos)} known error-free apps, skipped {len(already_pudb_only_repos)} known pudb-only apps, ignored {len(ignored_repos)} repos"
+        f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps"
     )
 
     if failed_repos:
@@ -602,8 +396,8 @@ def _process_multiple_repos(args, subdirs) -> int:
     elif processed_repos:
         logger.info("All processed repositories passed linting")
 
-    # Print E0401 summary if filtering is enabled
-    if args.only_import_errors and all_e0401_messages:
+    # Print E0401 summary
+    if all_e0401_messages:
         print(
             f"\n=== E0401 Import Errors by Repository ({len(all_e0401_messages)} repositories) ==="
         )
@@ -620,7 +414,7 @@ def _process_multiple_repos(args, subdirs) -> int:
             count = import_failure_counts[error_msg]
             print(f"{count} repos: {error_msg}")
 
-    # Print error summary (unless filtering for E0401 only)
+    # Print error summary (excluding allowed E0401)
     if error_summary and not args.only_import_errors:
         print("\n=== Error Summary ===")
         for error_code in sorted(error_summary.keys()):
@@ -632,61 +426,87 @@ def _process_multiple_repos(args, subdirs) -> int:
     # Print error-free repositories for future skipping
     if error_free_repos and not args.only_import_errors:
         print(f"\n=== Error-Free Repositories ({len(error_free_repos)}) ===")
-        print("# Add these to your skip list for future runs:")
-        print("ERROR_FREE_REPOS = [")
         for repo in sorted(error_free_repos):
             print(f'    "{repo}",')
-        print("]")
 
     # Print pudb-only repositories for future reference
     if pudb_only_repos and not args.only_import_errors:
         print(
             f"\n=== Repositories with Only PUDB Import Errors ({len(pudb_only_repos)}) ==="
         )
-        print("# These repos only have 'Unable to import pudb' errors:")
-        print("PUDB_ONLY_ERROR_REPOS = [")
         for repo in sorted(pudb_only_repos):
             print(f'    "{repo}",')
-        print("]")
 
     # Print namespace conflict repositories for future reference
     if namespace_conflict_repos and not args.only_import_errors:
         print(
             f"\n=== Repositories with Suspected Namespace Conflicts ({len(namespace_conflict_repos)}) ==="
         )
-        print("# These repos have import errors that match their repository name:")
-        print("NAMESPACE_CONFLICT_REPOS = [")
         for repo in sorted(namespace_conflict_repos):
             print(f'    "{repo}",')
-        print("]")
 
     # Output JSON failures if requested
     if args.json_failures:
         failures_json = {}
         for repo, messages in repo_error_messages.items():
-            # Only include repos that have errors and are not in our skip lists
-            if (
-                messages
-                and repo not in ERROR_FREE_REPOS
-                and repo not in PUDB_ONLY_ERROR_REPOS
-                and repo not in IGNORED_REPOS
-                and repo not in error_free_repos
-                and repo not in pudb_only_repos
-            ):
-                # Filter out platform package errors from the messages
+            if messages:
                 filtered_messages = []
                 for message in messages:
-                    if "E0401:" in message and is_platform_package_error(message):
-                        continue  # Skip platform package errors
+                    if "E0401:" in message and _is_allowed_e0401_message(message):
+                        continue
                     filtered_messages.append(message)
-
-                # Only include repos that still have errors after filtering
                 if filtered_messages:
                     failures_json[repo] = filtered_messages
 
         print(json.dumps(failures_json, indent=2, sort_keys=True))
 
     return overall_exit_code
+
+
+def _filter_raw_output(text: str) -> str:
+    """Remove lines from pylint text output that are allowed E0401 imports,
+    and drop module headers that end up with no remaining messages.
+    """
+    if not text:
+        return text
+    original_ends_with_newline = text.endswith("\n")
+
+    # First pass: drop allowed E0401 lines
+    kept_lines: List[str] = []
+    for line in text.splitlines():
+        if "E0401:" in line and _is_allowed_e0401_message(line):
+            continue
+        kept_lines.append(line)
+
+    # Second pass: drop module headers with no following messages
+    filtered_lines: List[str] = []
+    i = 0
+    while i < len(kept_lines):
+        line = kept_lines[i]
+        if line.startswith("************* Module "):
+            # Collect until next header or end
+            j = i + 1
+            has_message = False
+            while j < len(kept_lines) and not kept_lines[j].startswith(
+                "************* Module "
+            ):
+                # Treat non-empty, non-separator lines as messages
+                if kept_lines[j].strip():
+                    has_message = True
+                j += 1
+            if has_message:
+                filtered_lines.extend(kept_lines[i:j])
+            # Skip this group regardless; only append if it had messages
+            i = j
+            continue
+        else:
+            filtered_lines.append(line)
+            i += 1
+
+    filtered = "\n".join(filtered_lines)
+    if original_ends_with_newline and (not filtered.endswith("\n")):
+        filtered += "\n"
+    return filtered
 
 
 if __name__ == "__main__":

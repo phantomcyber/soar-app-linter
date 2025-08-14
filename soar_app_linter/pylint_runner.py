@@ -27,6 +27,69 @@ class MessageLevel(str, Enum):
         return []  # info or no option provided will show everything
 
 
+# Treat E0401 import errors for these modules as non-fatal platform deps.
+# These names correspond to import-time module names (not strictly PyPI names).
+ALLOWED_E0401_IMPORT_NAMES = {
+    # Core/platform packages
+    "beautifulsoup4",
+    "bs4",
+    "soupsieve",
+    "parse",
+    "python_dateutil",
+    "dateutil",
+    "six",
+    "requests",
+    "certifi",
+    "charset_normalizer",
+    "idna",
+    "urllib3",
+    "sh",
+    "xmltodict",
+    "simplejson",
+    "python-dateutil",
+    "python-magic",
+    "magic",
+    "distro",
+    "django",
+    "requests-pkcs12",
+    "requests_pkcs12",
+    "pynacl",
+    "nacl",
+    "psycopg2",
+    "PyYAML",
+    "yaml",
+    "hvac",
+    "pylint",
+    "pudb",
+    "tabulate",
+    "markdown2",
+    "pytz",
+    # XML/HTML helpers
+    "lxml",
+    "defusedxml",
+    "html5lib",
+    "webencodings",
+    # Platform/phantom helpers
+    "phantom_common",
+    "encryption_helper",
+    # Extras from provided dependency list
+    "zeep",
+    "paramiko",
+    "boto3",
+    # Azure SDKs
+    "azure",
+    "azure.core",
+    "azure.identity",
+    "azure.keyvault.secrets",
+    "azure.keyvault.keys",
+    "azure.mgmt.compute",
+    "azure.mgmt.rdbms",
+    # Google SDKs
+    "google.cloud.secretmanager",
+    "google_crc32c",
+}
+
+
 def _find_python_files(
     directory: Union[str, Path], use_relative_paths: bool = False
 ) -> List[str]:
@@ -104,17 +167,59 @@ def _ensure_init_files(directory: str) -> None:
 
 
 def _has_errors_in_output(output: str, output_format: str) -> bool:
-    """Check if there are any errors in the pylint output."""
+    """Check if there are any errors in the pylint output.
+
+    Treat E0401 import errors involving modules listed in
+    ALLOWED_E0401_IMPORT_NAMES as non-fatal (ignored for exit status).
+    """
+
+    def _is_allowed_import_error(message_text: str) -> bool:
+        text_lower = message_text.lower()
+        for pkg in ALLOWED_E0401_IMPORT_NAMES:
+            pkg_lower = pkg.lower()
+            if (
+                f"'{pkg_lower}'" in text_lower
+                or f'"{pkg_lower}"' in text_lower
+                or f"'{pkg_lower}." in text_lower
+                or f'"{pkg_lower}.' in text_lower
+                or f" {pkg_lower} " in text_lower
+                or f" {pkg_lower}." in text_lower
+                or text_lower.endswith(f" {pkg_lower}")
+                or text_lower.startswith(f"{pkg_lower} ")
+                or text_lower.startswith(f"{pkg_lower}.")
+            ):
+                return True
+        return False
+
     if output_format == "json":
         try:
             results = json.loads(output)
-            return any(result.get("type") in ("error", "fatal") for result in results)
+            for result in results:
+                msg_type = result.get("type")
+                if msg_type not in ("error", "fatal"):
+                    continue
+                msg_id = result.get("message-id")
+                if msg_id == "E0401" and _is_allowed_import_error(
+                    result.get("message", "")
+                ):
+                    continue
+                return True
+            return False
         except json.JSONDecodeError:
             raise
     else:
-        # For text output, look for error indicators
-        error_pattern = re.compile(r":\s[EF]\d{4}:")
-        return any(bool(error_pattern.search(line)) for line in output.splitlines())
+        error_line_re = re.compile(r":\s([EF])\d{4}:\s*(.+)$")
+        for line in output.splitlines():
+            match = error_line_re.search(line)
+            if not match:
+                continue
+            code_type = match.group(1)
+            message_text = match.group(2)
+            if "E0401:" in line and _is_allowed_import_error(message_text):
+                continue
+            if code_type in ("E", "F"):
+                return True
+        return False
 
 
 def run_pylint(
@@ -219,6 +324,18 @@ def run_pylint(
         f"--init-hook={init_hook}",
     ]
 
+    # Instruct pylint to ignore import checks for allowed modules at source so
+    # they do not contribute to score or raw output.
+    try:
+        ignored_modules = sorted(
+            {name.split(".")[0] for name in ALLOWED_E0401_IMPORT_NAMES}
+        )
+        if ignored_modules:
+            cmd.append(f"--ignored-modules={','.join(ignored_modules)}")
+    except Exception:
+        # Fallback: skip adding ignored modules if computation fails
+        pass
+
     # Add message level filtering first
     disable = message_level.to_pylint_disable()
     if disable:
@@ -304,9 +421,10 @@ def run_pylint(
         # Check if there were any errors in the output
         has_errors = _has_errors_in_output(result.stdout, output_format)
 
-        # Any non-zero return code from pylint should fail the run
-        # https://pylint.pycqa.org/en/latest/user_guide/usage/run.html#exit-codes
-        exit_code = 1 if (has_errors or result.returncode != 0) else 0
+        # Determine failure based on filtered errors, not raw pylint return code
+        # so that allowed E0401 imports do not fail the run even if pylint
+        # returned non-zero due to those messages.
+        exit_code = 1 if has_errors else 0
         return exit_code, result.stdout
 
     except subprocess.CalledProcessError as e:
