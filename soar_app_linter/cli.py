@@ -11,7 +11,7 @@ from collections import defaultdict
 
 from .app_validation import validate_app_json, should_process_app
 from .pylint_runner import MessageLevel, run_pylint, ALLOWED_E0401_IMPORT_NAMES
-from .dependency_utils import install_dependencies
+from .dependency_utils import install_dependencies, LAST_UNINSTALLED_DEPS
 
 # Set up logging
 logging.basicConfig(
@@ -156,8 +156,8 @@ def process_single_repo(
     if not args.disable_app_json_validation and not validate_app_json(repo_path):
         return 1, [], []
 
-    if not args.no_deps and not install_dependencies(repo_path):
-        return 1, [], []
+    if not args.no_deps:
+        install_dependencies(repo_path)
 
     # Run pylint
     exit_code, output = run_pylint(
@@ -175,6 +175,19 @@ def process_single_repo(
     if output:
         print(f"\n=== Results for {os.path.basename(repo_path)} ===")
         print(_filter_raw_output(output), end="")
+
+    # If dependency resolution found no compatible wheels for some deps, fail loudly
+    if LAST_UNINSTALLED_DEPS:
+        print("\n=== Dependency Resolution Errors ===")
+        print(
+            "The following dependencies could not be installed because no compatible wheels were found for this Python version:"
+        )
+        print("  - " + "\n  - ".join(sorted(set(LAST_UNINSTALLED_DEPS))))
+        print(
+            "Fix by adding py-compatible wheels under /wheels or <repo>/wheels, switching to a version with wheels, or installing system build deps."
+        )
+        # Treat this as a failure distinct from lint errors
+        return 1, error_codes, error_messages
 
     return exit_code, error_codes, error_messages
 
