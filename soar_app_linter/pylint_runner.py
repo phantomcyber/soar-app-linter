@@ -193,13 +193,30 @@ def run_pylint(
         )
         return 1, ""
 
+    # Ensure that the child pylint process can import our plugins even if it
+    # runs in a different interpreter (e.g. repo .venv vs pre-commit env).
+    # We inject the parent directory of the installed 'soar_app_linter' package
+    # (the site-packages path that contains the package) into sys.path.
+    try:
+        installed_pkg_parent = (
+            Path(__file__).resolve().parent  # .../soar_app_linter
+        ).parent  # site-packages or project root containing soar_app_linter
+        init_hook = (
+            "import sys; "
+            "sys.path.insert(0, '.'); "
+            f"sys.path.insert(0, '{installed_pkg_parent.as_posix()}')"
+        )
+    except Exception:
+        # Fallback to the original minimal init hook
+        init_hook = "import sys; sys.path.insert(0, '.')"
+
     cmd = [
         venv_python,
         "-m",
         "pylint",
         f"--rcfile={rcfile_str}",
         "--load-plugins=soar_app_linter.plugins",
-        "--init-hook=import sys; sys.path.insert(0, '.')",
+        f"--init-hook={init_hook}",
     ]
 
     # Add message level filtering first
