@@ -110,6 +110,20 @@ def _install_soar_linter(venv_python: Path, directory: Path, venv_dir: Path) -> 
     import subprocess
 
     linter_src = Path(__file__).parent.parent.resolve()
+    # Detect if __file__ is inside a site-packages install (running via pre-commit env)
+    is_site_packages = any(part == "site-packages" for part in linter_src.parts)
+    has_project_files = (linter_src / "pyproject.toml").exists() or (
+        linter_src / "setup.py"
+    ).exists()
+
+    if is_site_packages and not has_project_files:
+        # Running from an installed distribution, skip attempting to re-install into the app venv
+        logger.info(
+            "[install_dependencies] Detected installed distribution in site-packages; "
+            "skipping editable install of soar-app-linter into app venv"
+        )
+        return
+
     logger.info(
         f"[install_dependencies] Installing soar-app-linter from {linter_src} into venv at {venv_dir}"
     )
@@ -401,6 +415,7 @@ def _install_and_verify_dependencies(
 ) -> bool:
     """Install dependencies from a file and verify installation."""
     import subprocess
+    import sys
 
     # Read and log the dependencies from the file
     dependencies = _read_dependencies_from_file(dep_file)
@@ -439,20 +454,73 @@ def _install_and_verify_dependencies(
                 dependencies, dep_file, venv_python, directory
             )
             return True
-        elif _is_installation_error_ignorable(result.stderr, dep_file):
-            return True
-        else:
-            logger.error(
-                f"Failed to install dependencies from {dep_file.name} in venv. "
-                f"Error: {result.stderr.strip() or result.stdout.strip()}"
+
+        # Fallback: attempt to install from local wheels caches
+        wheel_bases = [Path("/wheels"), directory / "wheels"]
+        major_minor = f"py{sys.version_info.major}{sys.version_info.minor}"
+        wheel_subdirs = [major_minor, "py3", "shared"]
+        find_links_args: list[str] = []
+        for base in wheel_bases:
+            for sub in wheel_subdirs:
+                candidate = base / sub
+                if candidate.is_dir():
+                    find_links_args.extend(["--find-links", str(candidate)])
+
+        if find_links_args:
+            fallback_cmd = [
+                str(venv_python),
+                "-m",
+                "uv",
+                "pip",
+                "install",
+                "-v",
+                "-r",
+                str(dep_file.relative_to(directory)),
+                "--only-binary=:all:",
+                "--prefer-binary",
+                *find_links_args,
+            ]
+            logger.info(
+                f"Attempting wheel-only install for {dep_file.name} with local wheels: {' '.join(fallback_cmd)}"
             )
-            return False
+            fb_result = subprocess.run(
+                fallback_cmd,
+                cwd=directory,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            logger.debug(
+                f"[install_dependencies] Fallback stdout: {fb_result.stdout}\nFallback stderr: {fb_result.stderr}"
+            )
+            if fb_result.returncode == 0:
+                logger.info("Dependencies installed from local wheels")
+                _verify_installed_dependencies(
+                    dependencies, dep_file, venv_python, directory
+                )
+                return True
+            else:
+                logger.warning(
+                    "Wheel-only fallback failed; proceeding with linting. "
+                    f"Error: {fb_result.stderr.strip() or fb_result.stdout.strip()}"
+                )
+        else:
+            logger.debug("No local wheels directory found for fallback install")
+
+        # Non-fatal: dependency install is best-effort to reduce E0401 noise
+        logger.warning(
+            f"Continuing despite dependency install issues from {dep_file.name}. "
+            f"Linting does not require runtime deps. Error: {result.stderr.strip() or result.stdout.strip()}"
+        )
+        return True
 
     except Exception as e:
-        logger.error(
-            f"Unexpected error installing dependencies from {dep_file.name} in venv: {e}"
+        # Non-fatal: proceed with linting even if dependency resolution fails
+        logger.warning(
+            f"Proceeding without installing dependencies from {dep_file.name}: {e}"
         )
-        return False
+        return True
 
 
 def install_dependencies(directory: str) -> bool:
