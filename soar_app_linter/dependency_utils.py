@@ -110,14 +110,14 @@ def _install_soar_linter(venv_python: Path, directory: Path, venv_dir: Path) -> 
     import subprocess
 
     linter_src = Path(__file__).parent.parent.resolve()
-    # Detect if __file__ is inside a site-packages install (e.g., running via pre-commit env)
+    # Detect if __file__ is inside a site-packages install (running via pre-commit env)
     is_site_packages = any(part == "site-packages" for part in linter_src.parts)
     has_project_files = (linter_src / "pyproject.toml").exists() or (
         linter_src / "setup.py"
     ).exists()
 
     if is_site_packages and not has_project_files:
-        # We are running from an installed distribution; skip attempting to re-install into the app venv.
+        # Running from an installed distribution, skip attempting to re-install into the app venv
         logger.info(
             "[install_dependencies] Detected installed distribution in site-packages; "
             "skipping editable install of soar-app-linter into app venv"

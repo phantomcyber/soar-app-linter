@@ -28,7 +28,6 @@ class MessageLevel(str, Enum):
 
 
 # Treat E0401 import errors for these modules as non-fatal platform deps.
-# These names correspond to import-time module names (not strictly PyPI names).
 ALLOWED_E0401_IMPORT_NAMES = {
     # Core/platform packages
     "beautifulsoup4",
@@ -71,6 +70,7 @@ ALLOWED_E0401_IMPORT_NAMES = {
     "webencodings",
     # Platform/phantom helpers
     "phantom_common",
+    "phantom",
     "encryption_helper",
     # Extras from provided dependency list
     "zeep",
@@ -285,7 +285,7 @@ def run_pylint(
             "This may cause import errors. To avoid this, ensure dependencies are installed in a per-repo .venv."
         )
 
-    # Resolve rcfile path robustly whether running from source or installed package
+    # Resolve rcfile path robustly whether running from source or installed package (for pre-commit/CI)
     try:
         rcfile_path = importlib_resources.files(__package__).joinpath("pylintrc.app")
         rcfile_str = str(rcfile_path)
@@ -298,13 +298,10 @@ def run_pylint(
         )
         return 1, ""
 
-    # Ensure that the child pylint process can import our plugins even if it
-    # runs in a different interpreter (e.g. repo .venv vs pre-commit env).
-    # We inject the parent directory of the installed 'soar_app_linter' package
-    # (the site-packages path that contains the package) into sys.path.
+    # Ensure that the child pylint process can import plugins even if it runs in a different environment
     try:
         installed_pkg_parent = (
-            Path(__file__).resolve().parent  # .../soar_app_linter
+            Path(__file__).resolve().parent
         ).parent  # site-packages or project root containing soar_app_linter
         init_hook = (
             "import sys; "
@@ -324,8 +321,7 @@ def run_pylint(
         f"--init-hook={init_hook}",
     ]
 
-    # Instruct pylint to ignore import checks for allowed modules at source so
-    # they do not contribute to score or raw output.
+    # Instruct pylint to ignore import checks for allowed modules
     try:
         ignored_modules = sorted(
             {name.split(".")[0] for name in ALLOWED_E0401_IMPORT_NAMES}
@@ -333,7 +329,6 @@ def run_pylint(
         if ignored_modules:
             cmd.append(f"--ignored-modules={','.join(ignored_modules)}")
     except Exception:
-        # Fallback: skip adding ignored modules if computation fails
         pass
 
     # Add message level filtering first
@@ -421,9 +416,7 @@ def run_pylint(
         # Check if there were any errors in the output
         has_errors = _has_errors_in_output(result.stdout, output_format)
 
-        # Determine failure based on filtered errors, not raw pylint return code
-        # so that allowed E0401 imports do not fail the run even if pylint
-        # returned non-zero due to those messages.
+        # Determine failure based on filtered errors, not raw pylint return code (filtered imports don't contribute)
         exit_code = 1 if has_errors else 0
         return exit_code, result.stdout
 

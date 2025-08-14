@@ -141,9 +141,6 @@ def extract_e0401_messages_by_repo(output: str, repo_name: str) -> Dict[str, Lis
     return {repo_name: list(set(repo_errors))} if repo_errors else {}
 
 
-## Removed platform package matcher and filter; summaries will reflect raw messages.
-
-
 def process_single_repo(
     repo_path: str, args: argparse.Namespace
 ) -> tuple[int, List[str], List[str]]:
@@ -464,9 +461,7 @@ def _process_multiple_repos(args, subdirs) -> int:
 
 
 def _filter_raw_output(text: str) -> str:
-    """Remove lines from pylint text output that are allowed E0401 imports,
-    and drop module headers that end up with no remaining messages.
-    """
+    """Remove lines from pylint output that are allowed E0401 imports."""
     if not text:
         return text
     original_ends_with_newline = text.endswith("\n")
@@ -478,7 +473,7 @@ def _filter_raw_output(text: str) -> str:
             continue
         kept_lines.append(line)
 
-    # Second pass: drop module headers with no following messages
+    # Second pass: drop module headers with no following messages (would be there from allowed E0401 imports that were removed)
     filtered_lines: List[str] = []
     i = 0
     while i < len(kept_lines):
@@ -490,13 +485,11 @@ def _filter_raw_output(text: str) -> str:
             while j < len(kept_lines) and not kept_lines[j].startswith(
                 "************* Module "
             ):
-                # Treat non-empty, non-separator lines as messages
                 if kept_lines[j].strip():
                     has_message = True
                 j += 1
             if has_message:
                 filtered_lines.extend(kept_lines[i:j])
-            # Skip this group regardless; only append if it had messages
             i = j
             continue
         else:

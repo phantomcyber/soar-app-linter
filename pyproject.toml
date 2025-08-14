@@ -22,6 +22,7 @@ keywords = [
 authors = [
     { name = "Chris Geohring", email = "cgeohring@splunk.com" },
     { name = "Michael Nordby", email = "mnordby@splunk.com" },
+    { name = "Ian Rokas", email = "grokas@splunk.com" },
 ]
 classifiers = [
     "Development Status :: 1 - Beta",
