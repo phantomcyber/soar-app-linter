@@ -125,6 +125,49 @@ def _find_python_files(
     return files
 
 
+def _detect_namespace_conflict(directory: Union[str, Path]) -> bool:
+    """Detect if the repo likely shadows third-party packages it imports.
+
+    Heuristic: if a top-level directory or module name in the repo matches a
+    top-level imported module name, treat as a namespace conflict.
+    """
+    if isinstance(directory, str):
+        directory = Path(directory)
+    if not directory.is_dir():
+        return False
+
+    try:
+        # Collect top-level package/module names in the repo
+        top_level_names: set[str] = set()
+        for entry in directory.iterdir():
+            if entry.name.startswith(".") or entry.name == "__pycache__":
+                continue
+            if entry.is_dir():
+                top_level_names.add(entry.name)
+            elif entry.is_file() and entry.suffix == ".py":
+                top_level_names.add(entry.stem)
+
+        # Collect imported top-level module names
+        imported_names: set[str] = set()
+        import_re = re.compile(r"^\s*(?:from|import)\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+        for py_file in directory.rglob("*.py"):
+            if any(part == ".venv" for part in py_file.parts):
+                continue
+            try:
+                with open(py_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        m = import_re.match(line)
+                        if m:
+                            imported_names.add(m.group(1))
+            except Exception:
+                continue
+
+        # Conflict if any imported name matches a top-level local name
+        return bool(top_level_names.intersection(imported_names))
+    except Exception:
+        return False
+
+
 def _ensure_init_files(directory: str) -> None:
     """Ensure all Python packages have __init__.py files."""
     logger.debug(f"Ensuring __init__.py files in: {directory}")
@@ -336,45 +379,24 @@ def run_pylint(
     if disable:
         cmd.extend(disable)
 
-    # Ignore import errors when no_deps is True
-    if no_deps:
-        cmd.extend(["--disable=import-error"])
+    # Do not globally disable import-error; we want real import errors to surface
 
-    # Add additional ignore patterns for known-good modules that have import issues due to namespace conflicts
-    # This must come AFTER message level filtering to override --disable=all --enable=F,E
-    target_basename = os.path.basename(target)
-    if target_basename in [
-        "databricks",
-        "splunk",
-        "aws",
-        "azure",
-        "google",
-        "git",
-        "dns",
-        "jira",
-    ]:
-        # These are common namespace conflicts - disable specific import errors
-        cmd.extend(
-            [
-                "--disable=import-error",
-            ]
-        )
-        logger.debug(
-            f"Disabling import-error for namespace conflict repo: {target_basename}"
-        )
+    # Remove legacy namespace-based import-error suppression; conflicts are handled via E1101/E0611
 
-    # Disable error codes that are inconsistent between tool and platform behavior
-    # These errors are often false positives in SOAR app environments due to dynamic nature
-    cmd.extend(
-        [
-            "--disable=no-member",  # E1101
-            "--disable=no-name-in-module",  # E0611
-            "--disable=unsupported-membership-test",  # E1135
-            "--disable=unsupported-assignment-operation",  # E1137
-            "--disable=unsubscriptable-object",  # E1136
-        ]
+    # Disable error codes selectively; keep no-member and no-name-in-module enabled if namespace conflicts are detected
+    disable_flags: list[str] = [
+        "--disable=unsupported-membership-test",  # E1135
+        "--disable=unsupported-assignment-operation",  # E1137
+        "--disable=unsubscriptable-object",  # E1136
+    ]
+    if not _detect_namespace_conflict(repo_root):
+        disable_flags.append("--disable=no-member")  # E1101 only if no conflict
+        disable_flags.append("--disable=no-name-in-module")  # E0611 only if no conflict
+    cmd.extend(disable_flags)
+    logger.debug(
+        "Disabling problematic error codes: "
+        + ", ".join(flag.split("=")[1] for flag in disable_flags)
     )
-    logger.debug("Disabling problematic error codes: E1101, E0611, E1135, E1137, E1136")
 
     if output_format == "json":
         cmd.append("--output-format=json")
