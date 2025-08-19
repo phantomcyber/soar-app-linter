@@ -379,11 +379,6 @@ def run_pylint(
     if disable:
         cmd.extend(disable)
 
-    # Do not globally disable import-error; we want real import errors to surface
-
-    # Remove legacy namespace-based import-error suppression; conflicts are handled via E1101/E0611
-
-    # Disable error codes selectively; keep no-member and no-name-in-module enabled if namespace conflicts are detected
     disable_flags: list[str] = [
         "--disable=unsupported-membership-test",  # E1135
         "--disable=unsupported-assignment-operation",  # E1137

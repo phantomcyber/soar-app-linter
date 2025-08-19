@@ -183,9 +183,7 @@ def process_single_repo(
             "The following dependencies could not be installed because no compatible wheels were found for this Python version:"
         )
         print("  - " + "\n  - ".join(sorted(set(LAST_UNINSTALLED_DEPS))))
-        print(
-            "Fix by adding py-compatible wheels under /wheels or <repo>/wheels, switching to a version with wheels, or installing system build deps."
-        )
+        print("Fix by adding py-compatible and correct version wheels under /wheels")
         # Treat this as a failure distinct from lint errors
         return 1, error_codes, error_messages
 
