@@ -379,6 +379,10 @@ def run_pylint(
     if disable:
         cmd.extend(disable)
 
+    # Ignore import errors when no_deps is True (for testing/quick runs)
+    if no_deps:
+        cmd.extend(["--disable=import-error"])
+
     disable_flags: list[str] = [
         "--disable=unsupported-membership-test",  # E1135
         "--disable=unsupported-assignment-operation",  # E1137
