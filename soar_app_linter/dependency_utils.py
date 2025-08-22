@@ -7,6 +7,9 @@ logger = logging.getLogger(__name__)
 # Constants
 EGG_FRAGMENT = "#egg="
 
+# Tracks deps that were not installable in the last run (best-effort info)
+LAST_UNINSTALLED_DEPS: list[str] = []
+
 
 def _is_empty_or_irrelevant(file_path: Path) -> bool:
     """Check if a requirements.txt file is empty or doesn't contain any dependencies."""
@@ -110,6 +113,20 @@ def _install_soar_linter(venv_python: Path, directory: Path, venv_dir: Path) -> 
     import subprocess
 
     linter_src = Path(__file__).parent.parent.resolve()
+    # Detect if __file__ is inside a site-packages install (running via pre-commit env)
+    is_site_packages = any(part == "site-packages" for part in linter_src.parts)
+    has_project_files = (linter_src / "pyproject.toml").exists() or (
+        linter_src / "setup.py"
+    ).exists()
+
+    if is_site_packages and not has_project_files:
+        # Running from an installed distribution, skip attempting to re-install into the app venv
+        logger.info(
+            "[install_dependencies] Detected installed distribution in site-packages; "
+            "skipping editable install of soar-app-linter into app venv"
+        )
+        return
+
     logger.info(
         f"[install_dependencies] Installing soar-app-linter from {linter_src} into venv at {venv_dir}"
     )
@@ -399,7 +416,7 @@ def _is_installation_error_ignorable(stderr: str, dep_file: Path) -> bool:
 def _install_and_verify_dependencies(
     dep_file: Path, cmd: list, venv_python: Path, directory: Path, venv_dir: Path
 ) -> bool:
-    """Install dependencies from a file and verify installation."""
+    """Install dependencies from a file per-package (wheel-only) and verify installation."""
     import subprocess
 
     # Read and log the dependencies from the file
@@ -420,8 +437,38 @@ def _install_and_verify_dependencies(
     )
 
     try:
+        # Prefer wheel-only from caches first to avoid source builds
+        import sys as _sys
+
+        wheel_bases = [Path("/wheels"), directory / "wheels"]
+        major_minor = f"py{_sys.version_info.major}{_sys.version_info.minor}"
+        wheel_subdirs = [major_minor, "py3", "shared"]
+        find_links_args: list[str] = []
+        for base in wheel_bases:
+            for sub in wheel_subdirs:
+                candidate = base / sub
+                if candidate.is_dir():
+                    find_links_args.extend(["--find-links", str(candidate)])
+
+        primary_cmd = (
+            [
+                str(venv_python),
+                "-m",
+                "uv",
+                "pip",
+                "install",
+                "-v",
+                "-r",
+                str(dep_file.relative_to(directory)),
+                "--only-binary=:all:",
+                *find_links_args,
+            ]
+            if find_links_args
+            else cmd
+        )
+
         result = subprocess.run(
-            cmd,
+            primary_cmd,
             cwd=directory,
             check=False,  # Don't raise exception on non-zero exit
             stdout=subprocess.PIPE,
@@ -433,26 +480,73 @@ def _install_and_verify_dependencies(
         logger.debug(f"[install_dependencies] Command stderr: {result.stderr}")
         logger.debug(f"[install_dependencies] Command return code: {result.returncode}")
 
+        # Even if the batch resolver succeeded, continue to verify per-package presence
         if result.returncode == 0:
-            logger.info("Dependencies installed successfully in venv")
-            _verify_installed_dependencies(
-                dependencies, dep_file, venv_python, directory
+            logger.info("Dependencies installed successfully in venv (batch)")
+
+        # Per-package wheel-only installs to avoid one bad dep blocking all
+        LAST_UNINSTALLED_DEPS.clear()
+        for dep in dependencies:
+            # Try local wheels
+            ok = False
+            if find_links_args:
+                cmd_local = [
+                    str(venv_python),
+                    "-m",
+                    "uv",
+                    "pip",
+                    "install",
+                    "-v",
+                    "--only-binary=:all:",
+                    *find_links_args,
+                    dep,
+                ]
+                r = subprocess.run(
+                    cmd_local,
+                    cwd=directory,
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                ok = r.returncode == 0
+            if not ok:
+                # Try index wheels only
+                cmd_index = [
+                    str(venv_python),
+                    "-m",
+                    "uv",
+                    "pip",
+                    "install",
+                    "-v",
+                    "--only-binary=:all:",
+                    dep,
+                ]
+                r2 = subprocess.run(
+                    cmd_index,
+                    cwd=directory,
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                ok = r2.returncode == 0
+            if not ok:
+                LAST_UNINSTALLED_DEPS.append(dep)
+
+        # Summarize
+        if LAST_UNINSTALLED_DEPS:
+            logger.info(
+                f"Uninstalled dependencies for this run (no compatible wheels found): {', '.join(LAST_UNINSTALLED_DEPS)}"
             )
-            return True
-        elif _is_installation_error_ignorable(result.stderr, dep_file):
-            return True
-        else:
-            logger.error(
-                f"Failed to install dependencies from {dep_file.name} in venv. "
-                f"Error: {result.stderr.strip() or result.stdout.strip()}"
-            )
-            return False
+        return True
 
     except Exception as e:
-        logger.error(
-            f"Unexpected error installing dependencies from {dep_file.name} in venv: {e}"
+        # Non-fatal: proceed with linting even if dependency resolution fails
+        logger.warning(
+            f"Proceeding without installing dependencies from {dep_file.name}: {e}"
         )
-        return False
+        return True
 
 
 def install_dependencies(directory: str) -> bool:
