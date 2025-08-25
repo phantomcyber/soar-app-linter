@@ -302,8 +302,11 @@ def _get_dependency_files(directory: Path, venv_python: Path) -> list:
 
 def _extract_package_name(line: str) -> str:
     """Extract the package name from a requirements.txt line."""
-    # Remove common version specifiers and extras
     line = line.strip()
+
+    # Remove comments
+    if "#" in line:
+        line = line.split("#")[0].strip()
 
     # Handle git+https URLs
     if line.startswith("git+"):
@@ -321,6 +324,14 @@ def _extract_package_name(line: str) -> str:
         line = line[3:].strip()
         if EGG_FRAGMENT in line:
             return line.split(EGG_FRAGMENT)[1].split("&")[0]
+
+    # Handle @ version specifiers (like package@1.0.0 or package.git@tag)
+    if "@" in line:
+        line = line.split("@")[0]
+
+    # Remove .git suffix from package names
+    if line.endswith(".git"):
+        line = line[:-4]
 
     # Handle extras like package[extra1,extra2]
     if "[" in line:
