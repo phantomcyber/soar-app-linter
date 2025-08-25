@@ -142,6 +142,12 @@ def _detect_namespace_conflict(directory: Union[str, Path]) -> set[str]:
     try:
         # Collect top-level package/module names in the repo
         top_level_names: set[str] = set()
+
+        # Add the repository directory name itself as a potential conflict
+        repo_name = directory.name
+        if repo_name and not repo_name.startswith("."):
+            top_level_names.add(repo_name)
+
         for entry in directory.iterdir():
             if entry.name.startswith(".") or entry.name == "__pycache__":
                 continue

@@ -498,6 +498,11 @@ def _install_and_verify_dependencies(
         # Per-package wheel-only installs to avoid one bad dep blocking all
         LAST_UNINSTALLED_DEPS.clear()
         for dep in dependencies:
+            # Extract clean package name for wheel installation
+            package_name = _extract_package_name(dep)
+            if not package_name:
+                continue
+
             # Try local wheels
             ok = False
             if find_links_args:
@@ -510,7 +515,7 @@ def _install_and_verify_dependencies(
                     "-v",
                     "--only-binary=:all:",
                     *find_links_args,
-                    dep,
+                    package_name,
                 ]
                 r = subprocess.run(
                     cmd_local,
@@ -531,7 +536,7 @@ def _install_and_verify_dependencies(
                     "install",
                     "-v",
                     "--only-binary=:all:",
-                    dep,
+                    package_name,
                 ]
                 r2 = subprocess.run(
                     cmd_index,
