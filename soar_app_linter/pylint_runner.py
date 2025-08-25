@@ -125,16 +125,19 @@ def _find_python_files(
     return files
 
 
-def _detect_namespace_conflict(directory: Union[str, Path]) -> bool:
-    """Detect if the repo likely shadows third-party packages it imports.
+def _detect_namespace_conflict(directory: Union[str, Path]) -> set[str]:
+    """Detect modules that likely shadow third-party packages.
 
     Heuristic: if a top-level directory or module name in the repo matches a
     top-level imported module name, treat as a namespace conflict.
+
+    Returns:
+        set of conflicting module names
     """
     if isinstance(directory, str):
         directory = Path(directory)
     if not directory.is_dir():
-        return False
+        return set()
 
     try:
         # Collect top-level package/module names in the repo
@@ -163,9 +166,10 @@ def _detect_namespace_conflict(directory: Union[str, Path]) -> bool:
                 continue
 
         # Conflict if any imported name matches a top-level local name
-        return bool(top_level_names.intersection(imported_names))
+        conflicts = top_level_names.intersection(imported_names)
+        return conflicts
     except Exception:
-        return False
+        return set()
 
 
 def _ensure_init_files(directory: str) -> None:
@@ -209,11 +213,14 @@ def _ensure_init_files(directory: str) -> None:
         logger.debug("No new __init__.py files were needed")
 
 
-def _has_errors_in_output(output: str, output_format: str) -> bool:
+def _has_errors_in_output(
+    output: str, output_format: str, conflicting_modules: set[str]
+) -> bool:
     """Check if there are any errors in the pylint output.
 
     Treat E0401 import errors involving modules listed in
     ALLOWED_E0401_IMPORT_NAMES as non-fatal (ignored for exit status).
+    Also ignore E0401, E0611, E1101 errors for namespace-conflicting modules.
     """
 
     def _is_allowed_import_error(message_text: str) -> bool:
@@ -234,6 +241,24 @@ def _has_errors_in_output(output: str, output_format: str) -> bool:
                 return True
         return False
 
+    def _is_namespace_conflict_error(message_text: str) -> bool:
+        text_lower = message_text.lower()
+        for module in conflicting_modules:
+            module_lower = module.lower()
+            if (
+                f"'{module_lower}'" in text_lower
+                or f'"{module_lower}"' in text_lower
+                or f"'{module_lower}." in text_lower
+                or f'"{module_lower}.' in text_lower
+                or f" {module_lower} " in text_lower
+                or f" {module_lower}." in text_lower
+                or text_lower.endswith(f" {module_lower}")
+                or text_lower.startswith(f"{module_lower} ")
+                or text_lower.startswith(f"{module_lower}.")
+            ):
+                return True
+        return False
+
     if output_format == "json":
         try:
             results = json.loads(output)
@@ -242,24 +267,44 @@ def _has_errors_in_output(output: str, output_format: str) -> bool:
                 if msg_type not in ("error", "fatal"):
                     continue
                 msg_id = result.get("message-id")
-                if msg_id == "E0401" and _is_allowed_import_error(
-                    result.get("message", "")
-                ):
+                message = result.get("message", "")
+
+                # Skip allowed import errors
+                if msg_id == "E0401" and _is_allowed_import_error(message):
                     continue
+
+                # Skip namespace conflict errors
+                if msg_id in (
+                    "E0401",
+                    "E0611",
+                    "E1101",
+                ) and _is_namespace_conflict_error(message):
+                    continue
+
                 return True
             return False
         except json.JSONDecodeError:
             raise
     else:
-        error_line_re = re.compile(r":\s([EF])\d{4}:\s*(.+)$")
+        error_line_re = re.compile(r":\s([EF])(\d{4}):\s*(.+)$")
         for line in output.splitlines():
             match = error_line_re.search(line)
             if not match:
                 continue
             code_type = match.group(1)
-            message_text = match.group(2)
-            if "E0401:" in line and _is_allowed_import_error(message_text):
+            error_code = match.group(2)
+            message_text = match.group(3)
+
+            # Skip allowed import errors
+            if error_code == "0401" and _is_allowed_import_error(message_text):
                 continue
+
+            # Skip namespace conflict errors
+            if error_code in ("0401", "0611", "1101") and _is_namespace_conflict_error(
+                message_text
+            ):
+                continue
+
             if code_type in ("E", "F"):
                 return True
         return False
@@ -388,14 +433,7 @@ def run_pylint(
         "--disable=unsupported-assignment-operation",  # E1137
         "--disable=unsubscriptable-object",  # E1136
     ]
-    if not _detect_namespace_conflict(repo_root):
-        disable_flags.append("--disable=no-member")  # E1101 only if no conflict
-        disable_flags.append("--disable=no-name-in-module")  # E0611 only if no conflict
     cmd.extend(disable_flags)
-    logger.debug(
-        "Disabling problematic error codes: "
-        + ", ".join(flag.split("=")[1] for flag in disable_flags)
-    )
 
     if output_format == "json":
         cmd.append("--output-format=json")
@@ -435,7 +473,10 @@ def run_pylint(
             logger.error(f"Pylint stderr: {result.stderr}")
 
         # Check if there were any errors in the output
-        has_errors = _has_errors_in_output(result.stdout, output_format)
+        conflicting_modules = _detect_namespace_conflict(repo_root)
+        has_errors = _has_errors_in_output(
+            result.stdout, output_format, conflicting_modules
+        )
 
         # Determine failure based on filtered errors, not raw pylint return code (filtered imports don't contribute)
         exit_code = 1 if has_errors else 0
