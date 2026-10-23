@@ -1,11 +1,43 @@
 """Pytest configuration and fixtures."""
 
+import json
 from pathlib import Path
 from typing import Callable
 
 import pytest
 
 from soar_app_linter.pylint_runner import run_pylint, MessageLevel
+
+
+@pytest.fixture
+def create_app_json(tmp_path: Path) -> Callable[..., Path]:
+    """Create an app manifest for validation and CLI tests."""
+
+    def _create(python_version, publisher="Splunk", name="test_app"):
+        app_dir = tmp_path / name
+        app_dir.mkdir()
+        app_json = {
+            "appid": "test-app",
+            "name": "Test App",
+            "description": "Test app for validation",
+            "publisher": publisher,
+            "package_name": "test_app",
+            "type": "python3",
+            "main_module": "test_app.py",
+            "app_version": "1.0.0",
+            "product_vendor": "Test",
+            "product_name": "Test App",
+            "product_version_regex": ".*",
+            "min_phantom_version": "5.0.0",
+            "logo": "test.png",
+            "configuration": {},
+            "actions": [],
+            "python_version": python_version,
+        }
+        (app_dir / "app.json").write_text(json.dumps(app_json))
+        return app_dir
+
+    return _create
 
 
 @pytest.fixture(scope="session")

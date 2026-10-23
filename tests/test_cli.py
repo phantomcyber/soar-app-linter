@@ -1,12 +1,87 @@
 """Tests for the soar-app-linter CLI."""
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from collections.abc import Callable
 
 import pytest
 
 from soar_app_linter.pylint_runner import MessageLevel
+
+
+CLI = str(Path(sys.executable).with_name("soar-app-linter"))
+
+
+@pytest.mark.parametrize("publisher", ["Splunk", "Splunk Community", "Mandiant", ""])
+@pytest.mark.parametrize("single_repo", [True, False])
+def test_cli_checks_python_compatibility_for_all_publishers(
+    create_app_json, publisher, single_repo
+):
+    app_dir = create_app_json("3.13", publisher=publisher)
+    (app_dir / "test_app.py").write_text(
+        "class Example:\n"
+        "    @classmethod\n"
+        "    @property\n"
+        "    def value(cls):\n"
+        "        return 1\n"
+    )
+    command = [CLI, "--no-deps", "--message-level", "error"]
+    if single_repo:
+        command.extend(["--single-repo", str(app_dir)])
+    else:
+        command.append(str(app_dir.parent))
+
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "E9903" in result.stdout
+
+
+@pytest.mark.parametrize("single_repo", [True, False])
+def test_cli_rejects_vendor_app_without_python_313(create_app_json, single_repo):
+    app_dir = create_app_json("3.9", publisher="Mandiant")
+    (app_dir / "test_app.py").write_text("VALUE = 1\n")
+    command = [CLI, "--no-deps"]
+    command.extend(
+        ["--single-repo", str(app_dir)] if single_repo else [str(app_dir.parent)]
+    )
+
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "do not include the required version 3.13" in result.stdout
+
+
+def test_cli_accepts_clean_apps_and_skips_non_app_directory(create_app_json, tmp_path):
+    for publisher, name in (("Mandiant", "vendor"), ("Splunk Community", "community")):
+        app_dir = create_app_json("3.13", publisher=publisher, name=name)
+        (app_dir / "test_app.py").write_text("VALUE = 1\n")
+    (tmp_path / "not_an_app").mkdir()
+
+    result = subprocess.run(
+        [CLI, "--no-deps", "--message-level", "error", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Processing repository:" in result.stderr
+    assert "Processed 2 apps, skipped 1 non-app directories" in result.stderr
+
+
+def test_cli_rejects_invalid_explicit_app(tmp_path):
+    (tmp_path / "test_app.py").write_text("VALUE = 1\n")
+
+    result = subprocess.run(
+        [CLI, "--single-repo", "--no-deps", str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "No JSON files found" in result.stdout
 
 
 def test_good_app(

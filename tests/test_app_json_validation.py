@@ -1,61 +1,28 @@
 """Tests for app.json validation."""
 
 import json
-from pathlib import Path
-from typing import Any
+
+import pytest
 
 from soar_app_linter.app_validation import validate_app_json
 
 
-def create_app_json(
-    tmp_path: Path, python_version: Any, publisher: str = "Splunk"
-) -> Path:
-    """Create an app.json file with the given python_version.
-
-    Default publisher is set to "Splunk" to align with validation behavior.
-    """
-    app_dir = tmp_path / "test_app"
-    app_dir.mkdir()
-
-    app_json = {
-        "appid": "test-app",
-        "name": "Test App",
-        "description": "Test app for validation",
-        "publisher": publisher,
-        "package_name": "test_app",
-        "type": "python3",
-        "main_module": "test_app.py",
-        "app_version": "1.0.0",
-        "product_vendor": "Test",
-        "product_name": "Test App",
-        "product_version_regex": ".*",
-        "min_phantom_version": "5.0.0",
-        "logo": "test.png",
-        "configuration": {},
-        "actions": [],
-        "python_version": python_version,
-    }
-
-    app_json_path = app_dir / "app.json"
-    app_json_path.write_text(json.dumps(app_json))
-    return app_dir
-
-
-def test_valid_app_json_string(tmp_path):
+@pytest.mark.parametrize("publisher", ["Splunk", "Splunk Community", "Mandiant", ""])
+def test_valid_app_json_string(create_app_json, publisher):
     """Test app.json with python_version as string "3.13"."""
-    app_dir = create_app_json(tmp_path, "3.13")
+    app_dir = create_app_json("3.13", publisher=publisher)
     assert validate_app_json(app_dir) is True
 
 
-def test_valid_app_json_comma_string(tmp_path):
+def test_valid_app_json_comma_string(create_app_json):
     """Test app.json with python_version as comma-separated string."""
-    app_dir = create_app_json(tmp_path, "3.12, 3.13")
+    app_dir = create_app_json("3.12, 3.13")
     assert validate_app_json(app_dir) is True
 
 
-def test_valid_app_json_list(tmp_path):
+def test_valid_app_json_list(create_app_json):
     """Test app.json with python_version as list."""
-    app_dir = create_app_json(tmp_path, [3.12, "3.13"])
+    app_dir = create_app_json([3.12, "3.13"])
     assert validate_app_json(app_dir) is True
 
 
@@ -77,9 +44,11 @@ def test_missing_python_version(tmp_path):
     assert validate_app_json(app_dir) is False
 
 
-def test_unsupported_python_version(tmp_path):
+@pytest.mark.parametrize("publisher", ["Splunk", "Splunk Community", "Mandiant", ""])
+@pytest.mark.parametrize("python_version", ["2.7", "3", "3.9"])
+def test_unsupported_python_version(create_app_json, publisher, python_version):
     """Test app.json with unsupported python_version."""
-    app_dir = create_app_json(tmp_path, "2.7")  # Unsupported version
+    app_dir = create_app_json(python_version, publisher=publisher)
     assert validate_app_json(app_dir) is False
 
 
