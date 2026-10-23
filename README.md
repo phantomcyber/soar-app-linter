@@ -2,6 +2,9 @@
 
 Lint Splunk SOAR apps with pylint and SOAR-specific rules. Simple CLI, CI-friendly output.
 
+Apps are validated and linted regardless of their publisher. Multi-repository
+scans skip directories without a valid app manifest.
+
 ## Features
 
 - Pylint 3.3.6 (matches SOAR platform)

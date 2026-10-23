@@ -9,7 +9,7 @@ import re
 from typing import List, Dict
 from collections import defaultdict
 
-from .app_validation import validate_app_json, should_process_app
+from .app_validation import validate_app_json, is_app_directory
 from .pylint_runner import MessageLevel, run_pylint, ALLOWED_E0401_IMPORT_NAMES
 from .dependency_utils import install_dependencies, LAST_UNINSTALLED_DEPS
 
@@ -146,11 +146,6 @@ def process_single_repo(
 ) -> tuple[int, List[str], List[str]]:
     """Process a single repository and return its exit code, error codes, and error messages."""
     logger.info(f"Processing repository: {repo_path}")
-
-    # Check if we should process this app based on publisher
-    if not should_process_app(repo_path):
-        logger.info(f"Skipping {os.path.basename(repo_path)} - not a Splunk app")
-        return 0, [], []  # Return success for skipped apps with no errors
 
     # Validate app.json if not disabled
     if not args.disable_app_json_validation and not validate_app_json(repo_path):
@@ -352,9 +347,8 @@ def _process_multiple_repos(args, subdirs) -> int:
     for subdir in sorted(subdirs):
         repo_path = os.path.join(args.target, subdir)
 
-        # Skip repos that are not Splunk apps
-        if not should_process_app(repo_path):
-            logger.info(f"Skipping {subdir} - not a Splunk app")
+        if not is_app_directory(repo_path):
+            logger.info(f"Skipping {subdir} - no valid app manifest")
             skipped_repos.append(subdir)
             continue
 
@@ -394,7 +388,7 @@ def _process_multiple_repos(args, subdirs) -> int:
 
     # Report results
     logger.info(
-        f"Processed {len(processed_repos)} Splunk apps, skipped {len(skipped_repos)} non-Splunk apps"
+        f"Processed {len(processed_repos)} apps, skipped {len(skipped_repos)} non-app directories"
     )
 
     if failed_repos:

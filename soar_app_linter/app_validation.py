@@ -1,14 +1,11 @@
 """App validation module for SOAR apps."""
 
 import json
-import logging
 import os
 import re
 import glob
 from typing import Any, Tuple, Union
 from packaging.version import Version
-
-logger = logging.getLogger(__name__)
 
 
 class NotFoundError(Exception):
@@ -134,15 +131,6 @@ def validate_app_json(target_dir: Union[str, os.PathLike]) -> bool:
     """
     try:
         app_json_path, app_json = _find_app_json(target_dir)
-        publisher = app_json.get("publisher", "")
-
-        # Skip non-Splunk apps
-        if publisher != "Splunk":
-            logger.debug(
-                f"Skipping app with publisher '{publisher}' - only processing Splunk apps"
-            )
-            return False
-
         app_versions = _app_python_versions(app_json)
 
         if PYTHON_313_VERSION not in app_versions:
@@ -159,19 +147,18 @@ def validate_app_json(target_dir: Union[str, os.PathLike]) -> bool:
         return False
 
 
-def should_process_app(target_dir: Union[str, os.PathLike]) -> bool:
+def is_app_directory(target_dir: Union[str, os.PathLike]) -> bool:
     """
-    Check if an app should be processed based on its publisher.
+    Check whether a directory contains a valid app manifest.
 
     Args:
         target_dir: Directory containing the app.json file
 
     Returns:
-        bool: True if app should be processed (publisher is Splunk), False otherwise
+        bool: True if a valid app manifest exists, False otherwise
     """
     try:
-        app_json_path, app_json = _find_app_json(target_dir)
-        publisher = app_json.get("publisher", "")
-        return publisher == "Splunk"
+        _find_app_json(target_dir)
+        return True
     except (NotFoundError, ValueError):
         return False
