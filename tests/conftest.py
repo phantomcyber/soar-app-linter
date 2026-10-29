@@ -40,6 +40,29 @@ def create_app_json(tmp_path: Path) -> Callable[..., Path]:
     return _create
 
 
+@pytest.fixture
+def create_sdk_app(tmp_path: Path) -> Callable[..., Path]:
+    """Create SDK source metadata without generating a manifest or importing the app."""
+
+    def _create(requires_python=">=3.13,<3.15", name="sdk_app"):
+        app_dir = tmp_path / name
+        app_dir.mkdir()
+        python_constraint = (
+            f"requires-python = {json.dumps(requires_python)}\n"
+            if requires_python is not None
+            else ""
+        )
+        (app_dir / "pyproject.toml").write_text(
+            '[project]\nname = "sdk-app"\nversion = "1.0.0"\n'
+            + python_constraint
+            + 'dependencies = []\n\n[tool.soar.app]\nmain_module = "app:app"\n'
+        )
+        (app_dir / "app.py").write_text("VALUE = 1\n")
+        return app_dir
+
+    return _create
+
+
 @pytest.fixture(scope="session")
 def test_data_dir() -> Path:
     """Return the path to the test data directory."""

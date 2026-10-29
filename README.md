@@ -2,8 +2,10 @@
 
 Lint Splunk SOAR apps with pylint and SOAR-specific rules. Simple CLI, CI-friendly output.
 
-Apps are validated and linted regardless of their publisher. Multi-repository
-scans skip directories without a valid app manifest.
+Apps are validated and linted regardless of their publisher. SDK apps are
+recognized by their `[tool.soar.app]` configuration in `pyproject.toml`; they do
+not need a generated app JSON file. Multi-repository scans include both SDK and
+legacy apps and skip other directories.
 
 ## Features
 
@@ -11,7 +13,20 @@ scans skip directories without a valid app manifest.
 - SOAR-specific pylint plugins
 - Auto-create missing `__init__.py` files
 - Text or JSON output; exit code 0/1 for CI
-- Python 3.13 compatible and app.json validation
+- Python 3.13 compatibility validation using SDK project metadata or legacy app JSON
+
+For legacy apps, the linter checks required manifest fields and the
+`python_version` declaration. For SDK apps, it checks `tool.soar.app.main_module`
+and that `project.requires-python` permits Python 3.13. An omitted Python
+constraint follows the SDK's default of supporting all its Python versions.
+Linting does not import the SDK app or generate its manifest.
+
+SDK dependencies are synchronized from `uv.lock` when present, including the
+project's default development groups. Without a lock file, runtime dependencies
+and the `dev` group are installed from `pyproject.toml`. Pylint is installed in
+the app's `.venv`; the linter's own legacy dependencies are kept out of that
+environment, including its incompatible `pydantic<2` requirement. Use `--no-deps`
+to skip installation and import-error checks.
 
 ## Installation
 
@@ -58,7 +73,7 @@ Advanced:
 
 - `--only-import-errors`: show only import errors (E0401)
 - `--json-failures`: JSON with repos and their error messages
-- `--disable-app-json-validation`: skip app.json validation
+- `--disable-app-json-validation`: skip SDK/legacy metadata and Python version validation
 
 ## Development
 
