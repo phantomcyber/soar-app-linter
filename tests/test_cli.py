@@ -86,6 +86,30 @@ def test_cli_rejects_invalid_explicit_app(tmp_path):
     assert "No JSON files found" in result.stdout
 
 
+@pytest.mark.parametrize("target", [None, ".", "./", "name"])
+@pytest.mark.parametrize("sdk_app", [False, True])
+@pytest.mark.parametrize("has_error", [False, True])
+def test_cli_lints_relative_targets(
+    create_sdk_app, create_app_json, target, sdk_app, has_error
+):
+    app_dir = create_sdk_app() if sdk_app else create_app_json("3.13")
+    (app_dir / "example.py").write_text(
+        "VALUE = missing_name\n" if has_error else "VALUE = 1\n"
+    )
+    command = [CLI, "--single-repo", "--no-deps", "--message-level", "error"]
+    cwd = app_dir
+    if target == "name":
+        command.append(app_dir.name)
+        cwd = app_dir.parent
+    elif target is not None:
+        command.append(target)
+
+    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+
+    assert result.returncode == int(has_error), result.stdout + result.stderr
+    assert ("E0602" in result.stdout) is has_error
+
+
 @pytest.mark.parametrize("layout", ["single", "collection", "root"])
 @pytest.mark.parametrize("has_error", [False, True])
 def test_cli_lints_sdk_source_without_a_generated_manifest(

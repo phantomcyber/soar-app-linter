@@ -343,6 +343,7 @@ def run_pylint(
     # Use the repo's .venv/bin/python if it exists, else fall back to sys.executable
     venv_python = None
     target_path = Path(target).resolve()
+    target = str(target_path)
     repo_root = target_path if target_path.is_dir() else target_path.parent
     venv_candidate = repo_root / ".venv" / "bin" / "python"
     venv_site_packages = None
