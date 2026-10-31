@@ -7,7 +7,6 @@ import subprocess
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import List
 import re
 import json
 
@@ -20,7 +19,7 @@ class MessageLevel(str, Enum):
     ERROR = "error"
     INFO = "info"
 
-    def to_pylint_disable(self) -> List[str]:
+    def to_pylint_disable(self) -> list[str]:
         """Convert to pylint's disable arguments."""
         if self == MessageLevel.ERROR:
             return ["--disable=all", "--enable=F,E"]
@@ -90,7 +89,7 @@ ALLOWED_E0401_IMPORT_NAMES = {
 }
 
 
-def _find_python_files(directory: Path, use_relative_paths: bool = False) -> List[Path]:
+def _find_python_files(directory: Path, use_relative_paths: bool = False) -> list[Path]:
     """Find all Python files in the given directory."""
     logger.debug(f"Searching for Python files in: {directory}")
 
