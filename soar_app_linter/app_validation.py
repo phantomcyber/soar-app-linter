@@ -4,7 +4,9 @@ import json
 import os
 import re
 import glob
+import tomllib
 from typing import Any, Tuple, Union
+from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 
@@ -35,6 +37,52 @@ REQUIRED_APP_JSON_FIELDS = (
 )
 
 PYTHON_313_VERSION = Version("3.13")
+
+
+def load_sdk_project(target_dir: Union[str, os.PathLike]) -> dict[str, Any] | None:
+    """Read SDK source metadata without importing app code or generating a manifest."""
+    pyproject_path = os.path.join(target_dir, "pyproject.toml")
+    if not os.path.isfile(pyproject_path):
+        return None
+
+    with open(pyproject_path, "rb") as file:
+        project = tomllib.load(file)
+
+    tool = project.get("tool", {})
+    if not isinstance(tool, dict):
+        return None
+    soar = tool.get("soar", {})
+    if not isinstance(soar, dict) or not isinstance(soar.get("app"), dict):
+        return None
+    return project
+
+
+def validate_app(target_dir: Union[str, os.PathLike]) -> bool:
+    """Validate SDK source metadata or a legacy app manifest."""
+    try:
+        project = load_sdk_project(target_dir)
+        if project is None:
+            return validate_app_json(target_dir)
+
+        main_module = project["tool"]["soar"]["app"].get("main_module")
+        if not isinstance(main_module, str) or not main_module.strip():
+            raise ValueError("SDK apps must define tool.soar.app.main_module")
+
+        metadata = project.get("project", {})
+        if not isinstance(metadata, dict):
+            raise ValueError("SDK project metadata must be a TOML table")
+        requires_python = metadata.get("requires-python", "")
+        if not isinstance(requires_python, str):
+            raise ValueError("project.requires-python must be a string")
+        if PYTHON_313_VERSION not in SpecifierSet(requires_python):
+            raise ValueError(
+                f"SDK app's requires-python ({requires_python}) does not include "
+                f"the required version {PYTHON_313_VERSION}"
+            )
+        return True
+    except (OSError, ValueError) as error:
+        print(f"Error: {target_dir}/pyproject.toml: {error}")
+        return False
 
 
 def _find_app_json(app_dir: Union[str, os.PathLike]) -> Tuple[str, dict[str, Any]]:
@@ -149,16 +197,18 @@ def validate_app_json(target_dir: Union[str, os.PathLike]) -> bool:
 
 def is_app_directory(target_dir: Union[str, os.PathLike]) -> bool:
     """
-    Check whether a directory contains a valid app manifest.
+    Check whether a directory contains SDK source metadata or a legacy app manifest.
 
     Args:
-        target_dir: Directory containing the app.json file
+        target_dir: Directory containing SDK project metadata or an app JSON file
 
     Returns:
-        bool: True if a valid app manifest exists, False otherwise
+        bool: True if SDK metadata or a valid legacy manifest exists, False otherwise
     """
     try:
+        if load_sdk_project(target_dir) is not None:
+            return True
         _find_app_json(target_dir)
         return True
-    except (NotFoundError, ValueError):
+    except (OSError, NotFoundError, ValueError):
         return False

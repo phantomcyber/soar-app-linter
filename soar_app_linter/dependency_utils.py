@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+from .app_validation import load_sdk_project
+
 
 logger = logging.getLogger(__name__)
 
@@ -575,6 +577,42 @@ def install_dependencies(directory: str) -> bool:
     try:
         # Set up virtual environment and tools
         venv_dir, venv_python = _ensure_venv_exists(directory)
+        sdk_project = load_sdk_project(directory)
+        if sdk_project is not None:
+            import os
+            import subprocess
+            import sys
+
+            LAST_UNINSTALLED_DEPS.clear()
+            uv = [sys.executable, "-m", "uv"]
+            if (directory / "uv.lock").is_file():
+                subprocess.run(
+                    [*uv, "sync", "--frozen", "--no-install-project"],
+                    cwd=directory,
+                    env={**os.environ, "UV_PROJECT_ENVIRONMENT": str(venv_dir)},
+                    check=True,
+                )
+                requirements = []
+            else:
+                requirements = ["-r", "pyproject.toml"]
+                if "dev" in sdk_project.get("dependency-groups", {}):
+                    requirements.extend(["--group", "dev"])
+            # Keep the linter's legacy pydantic<2 dependencies out of SDK app environments.
+            subprocess.run(
+                [
+                    *uv,
+                    "pip",
+                    "install",
+                    "--python",
+                    str(venv_python),
+                    *requirements,
+                    "pylint==3.3.6",
+                ],
+                cwd=directory,
+                check=True,
+            )
+            return True
+
         _ensure_uv_installed(venv_python, directory)
         _install_pylint(venv_python, directory)
         _install_soar_linter(venv_python, directory, venv_dir)

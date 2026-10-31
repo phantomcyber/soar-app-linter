@@ -9,7 +9,7 @@ import re
 from typing import List, Dict
 from collections import defaultdict
 
-from .app_validation import validate_app_json, is_app_directory
+from .app_validation import validate_app, is_app_directory
 from .pylint_runner import MessageLevel, run_pylint, ALLOWED_E0401_IMPORT_NAMES
 from .dependency_utils import install_dependencies, LAST_UNINSTALLED_DEPS
 
@@ -66,7 +66,7 @@ def parse_args(args: List[str] = None) -> argparse.Namespace:
     parser.add_argument(
         "--disable-app-json-validation",
         action="store_true",
-        help="Skip app.json validation",
+        help="Skip app metadata and Python version validation",
     )
 
     parser.add_argument(
@@ -147,12 +147,12 @@ def process_single_repo(
     """Process a single repository and return its exit code, error codes, and error messages."""
     logger.info(f"Processing repository: {repo_path}")
 
-    # Validate app.json if not disabled
-    if not args.disable_app_json_validation and not validate_app_json(repo_path):
+    # Validate source metadata for SDK apps and manifests for legacy apps.
+    if not args.disable_app_json_validation and not validate_app(repo_path):
         return 1, [], []
 
-    if not args.no_deps:
-        install_dependencies(repo_path)
+    if not args.no_deps and not install_dependencies(repo_path):
+        return 1, [], []
 
     # Run pylint
     exit_code, output = run_pylint(
@@ -232,7 +232,11 @@ def main() -> int:
         return 1
 
     # Check if we should treat target as a single repo or scan for multiple repos
-    if args.single_repo or not os.path.isdir(args.target):
+    if (
+        args.single_repo
+        or not os.path.isdir(args.target)
+        or is_app_directory(args.target)
+    ):
         # Process single repository or file
         return _process_single_target(args)
 
