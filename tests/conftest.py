@@ -98,7 +98,7 @@ def run_linter() -> Callable[..., tuple[int, str]]:
     """Fixture to run the linter with the given arguments."""
 
     def _run_linter(
-        target: str,
+        target: str | Path,
         output_format: str = "text",
         message_level: MessageLevel | None = None,
         no_deps: bool = False,
